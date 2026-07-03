@@ -6,7 +6,6 @@ from setup_logging import setup_logging
 from database import init_db
 
 setup_logging()
-init_db()
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ async def on_ready():
 
 
 async def main():
+    await init_db()
     async with bot:
         await bot.load_extension("cogs.registration_cog")
         await bot.start(TOKEN)
