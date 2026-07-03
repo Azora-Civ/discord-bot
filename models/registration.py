@@ -4,10 +4,12 @@ from typing import Optional
 
 from models.person import Citizenship
 
+
 class RegistrationStatus(StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
 
 @dataclass(slots=True, kw_only=True)
 class Registration:
@@ -24,5 +26,3 @@ class Registration:
     snitch_hit: bool = False
     status: RegistrationStatus = RegistrationStatus.PENDING
     created_at: Optional[str] = None
-
-

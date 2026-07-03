@@ -1,19 +1,27 @@
 import discord
+import logging
 from discord.ext import commands
 from config import TOKEN, GUILD
 from repositories.registrations import RegistrationRepository
 from repositories.people import PeopleRepository
 from repositories.key_values import KeyValueRepository
+from setup_logging import setup_logging
+
+setup_logging()
+
+log = logging.getLogger(__name__)
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
 @bot.event
 async def on_ready():
     synced = await bot.tree.sync(guild=GUILD)
-    print(f"Logged in as {bot.user}")
-    print(f"Synced {len(synced)} command(s)")
+    log.info(f"Logged in as {bot.user}")
+    log.info(f"Synced {len(synced)} command(s)")
+
 
 async def main():
     await PeopleRepository().create_table()
@@ -26,4 +34,5 @@ async def main():
 
 
 import asyncio
+
 asyncio.run(main())

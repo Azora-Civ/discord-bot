@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+
 class Citizenship(StrEnum):
     CITIZEN = "Citizen"
     RESIDENT = "Resident"
     PENDING = "Pending"
+
 
 @dataclass(slots=True, kw_only=True)
 class Person:

@@ -21,19 +21,21 @@ class RegistrationCog(commands.Cog):
     async def _set_snitch_regex(self):
         self.snitch_cache = True
 
-        self.snitch_channel = await KeyValueRepository().get_int(key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY)
+        self.snitch_channel = await KeyValueRepository().get_int(
+            key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY
+        )
 
         snitch = await KeyValueRepository().get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
         snitch_group = await KeyValueRepository().get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
-        self.snitch_regex = re.compile(fr"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}")
+        self.snitch_regex = re.compile(
+            rf"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}"
+        )
 
-
-    @app_commands.command(name="registration-panel", description="Setup the registration panel here.")
+    @app_commands.command(
+        name="registration-panel", description="Setup the registration panel here."
+    )
     @app_commands.checks.has_permissions(administrator=True)
-    async def registration_panel(
-            self,
-            interaction: discord.Interaction
-    ):
+    async def registration_panel(self, interaction: discord.Interaction):
         async with processing_response(interaction):
             embed = discord.Embed(
                 title="Azora Registration",
@@ -45,16 +47,15 @@ class RegistrationCog(commands.Cog):
                 embed=embed,
                 view=RegistrationView(),
             )
-            await interaction.edit_original_response(
-                content="Registration panel posted."
-            )
+            await interaction.edit_original_response(content="Registration panel posted.")
 
-    @app_commands.command(name="registration-set-channel", description="Setup where registration creates new threads for new registrations.")
+    @app_commands.command(
+        name="registration-set-channel",
+        description="Setup where registration creates new threads for new registrations.",
+    )
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_channel(
-            self,
-            interaction: discord.Interaction,
-            channel: discord.ForumChannel
+        self, interaction: discord.Interaction, channel: discord.ForumChannel
     ):
         async with processing_response(interaction, ephemeral=False):
             await KeyValueRepository().set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
@@ -62,21 +63,26 @@ class RegistrationCog(commands.Cog):
                 content=f"Successfully updated the registration channel. Future registrations will now be made under: {channel.mention}"
             )
 
-
-    @app_commands.command(name="registration-set-snitch", description="Setup the snitch to listen for and where to listen.")
+    @app_commands.command(
+        name="registration-set-snitch",
+        description="Setup the snitch to listen for and where to listen.",
+    )
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_snitch(
-            self,
-            interaction: discord.Interaction,
-            snitch: str,
-            snitch_group: str,
-            channel: discord.TextChannel
+        self,
+        interaction: discord.Interaction,
+        snitch: str,
+        snitch_group: str,
+        channel: discord.TextChannel,
     ):
         async with processing_response(interaction, ephemeral=False):
             await KeyValueRepository().set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
-            await KeyValueRepository().set(key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group)
-            await KeyValueRepository().set_int(key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id)\
-
+            await KeyValueRepository().set(
+                key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group
+            )
+            await KeyValueRepository().set_int(
+                key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id
+            )
             await self._set_snitch_regex()
             await interaction.edit_original_response(
                 content=f"Successfully updated the registration snitch. Will now listen to snitch hits of '{snitch}' on '{snitch_group}' in {channel.mention}."
