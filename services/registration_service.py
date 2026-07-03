@@ -33,7 +33,9 @@ class RegistrationService:
             await p_repo.upsert(person)
 
         # If already citizen count snitch as hit
-        registration.snitch_hit = person.citizenship != Citizenship.PENDING
+        registration.snitch_hit = (person.citizenship != Citizenship.PENDING) and (
+            person.in_game_name == registration.in_game_name
+        )
 
         # Reject pending registration for this person
         previous_registrations = await r_repo.get_by_user_id(user_id)
@@ -123,6 +125,9 @@ class RegistrationService:
         await self.update_registration_message(interaction.client, registration)
 
     async def reject_registration(self, client: discord.Client, registration: Registration):
+        if registration is None:
+            return
+
         if registration.status == RegistrationStatus.REJECTED:
             return
 
@@ -150,30 +155,54 @@ class RegistrationService:
         await r_repo.update(registration)
 
     def _get_msg(self, registration: Registration):
+        status = str(registration.status).title()
+        citizenship = str(registration.citizenship_type).title()
+
+        snitch_hit = "✅" if registration.snitch_hit else "❌"
+
         embed = discord.Embed(
-            title="New Registration Request",
-            description=f"<@{registration.user_id}> submitted a registration request.",
+            title="📋 New Registration Request",
+            description=f"Submitted by <@{registration.user_id}>",
             color=discord.Color.gold(),
         )
 
-        embed.add_field(name="In-game name", value=registration.in_game_name, inline=False)
-        embed.add_field(name="Requested status", value=registration.citizenship_type, inline=False)
         embed.add_field(
-            name="What goals/skills do you bring to Azora?", value=registration.about, inline=False
-        )
-        embed.add_field(
-            name="Do you promise to follow the rules?",
-            value=registration.follow_rules,
-            inline=False,
-        )
-        embed.add_field(
-            name="Citizens/Residents start at Level 1. Understand?",
-            value=registration.citizenry,
+            name="Applicant",
+            value=(
+                f"**User:** <@{registration.user_id}>\n"
+                f"**In-game name:** {registration.in_game_name}\n"
+                f"**Requested status:** {citizenship}"
+            ),
             inline=False,
         )
 
-        embed.add_field(name="Status:", value=str(registration.status), inline=False)
+        embed.add_field(
+            name="What goals/skills do you bring to Azora?",
+            value=registration.about or "No answer provided.",
+            inline=False,
+        )
 
-        embed.add_field(name="Hit a snitch:", value=str(registration.snitch_hit), inline=False)
+        embed.add_field(
+            name="Will you follow the server rules?",
+            value=registration.follow_rules or "No answer provided.",
+            inline=False,
+        )
 
-        return {"embed": embed, "view": RegistrationResponseView()}
+        embed.add_field(
+            name="Do you understand you'll start at Level 1?",
+            value=registration.citizenry or "No answer provided.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Review Info",
+            value=(f"**Status:** {status}\n**Hit a snitch:** {snitch_hit}"),
+            inline=False,
+        )
+
+        response = {"embed": embed}
+
+        if registration.status == RegistrationStatus.PENDING:
+            response["view"] = RegistrationResponseView()
+
+        return response

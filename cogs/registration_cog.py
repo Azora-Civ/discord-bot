@@ -1,11 +1,14 @@
 import re
 
 import discord
-from discord import app_commands
+from discord import app_commands, User
 from discord.ext import commands
 
 import config as cfg
+from helpers.discord_formatting import timestamp
+from models.person import Person, Citizenship
 from repositories.key_values import KeyValueRepository
+from repositories.people import PeopleRepository
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
 from helpers.general import processing_response
@@ -39,7 +42,7 @@ class RegistrationCog(commands.Cog):
         async with processing_response(interaction):
             embed = discord.Embed(
                 title="Azora Registration",
-                description="Register as a citizen or resident.",
+                description="[ADMIN] Register as a citizen or resident.",
                 color=discord.Color.blue(),
             )
 
@@ -51,7 +54,7 @@ class RegistrationCog(commands.Cog):
 
     @app_commands.command(
         name="registration-set-channel",
-        description="Setup where registration creates new threads for new registrations.",
+        description="[ADMIN] Setup where registration creates new threads for new registrations.",
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_channel(
@@ -65,7 +68,7 @@ class RegistrationCog(commands.Cog):
 
     @app_commands.command(
         name="registration-set-snitch",
-        description="Setup the snitch to listen for and where to listen.",
+        description="[ADMIN] Setup the snitch to listen for and where to listen.",
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_snitch(
@@ -88,6 +91,24 @@ class RegistrationCog(commands.Cog):
                 content=f"Successfully updated the registration snitch. Will now listen to snitch hits of '{snitch}' on '{snitch_group}' in {channel.mention}."
             )
 
+    @app_commands.command(
+        name="citizenship",
+        description="Show information about yourself or another citizen/resident.",
+    )
+    async def citizenship(
+        self,
+        interaction: discord.Interaction,
+        user: discord.User | None,
+    ):
+        async with processing_response(interaction, ephemeral=False):
+            user: User = user or interaction.user
+            p_repo = PeopleRepository()
+            person = await p_repo.get_by_user_id(user.id)
+
+            embed = get_person_embed(user, person)
+
+            await interaction.edit_original_response(content=None, embed=embed)
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if not self.snitch_cache:
@@ -106,3 +127,35 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
     bot.add_view(RegistrationView())
     bot.add_view(RegistrationResponseView())
+
+
+def get_person_embed(user: discord.User | discord.Member, person: Person | None) -> discord.Embed:
+    if person is None:
+        embed = discord.Embed(
+            title="Person Lookup",
+            description=f"{user.mention} is not registered as a citizen or resident.",
+            color=discord.Color.red(),
+        )
+        embed.add_field(name="User", value=user.mention, inline=False)
+        embed.add_field(name="Citizenship", value="Not registered", inline=True)
+        return embed
+
+    embed = discord.Embed(
+        title="Person Lookup",
+        description=f"Information for {user.mention}",
+        color=discord.Color.green()
+        if person.citizenship == Citizenship.CITIZEN
+        else discord.Color.blue(),
+    )
+
+    embed.add_field(name="User", value=user.mention, inline=False)
+    embed.add_field(name="In-game name", value=person.in_game_name, inline=True)
+    embed.add_field(name="Citizenship", value=str(person.citizenship), inline=True)
+
+    embed.add_field(
+        name="Joined",
+        value=timestamp(person.created_at),
+        inline=False,
+    )
+
+    return embed

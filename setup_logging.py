@@ -2,9 +2,12 @@ import logging
 import sys
 import time
 from logging.handlers import TimedRotatingFileHandler
+from config import LOG_FILE, LOG_PATH
 
 
 def setup_logging():
+    LOG_PATH.mkdir(parents=True, exist_ok=True)
+
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     formatter.converter = time.gmtime
 
@@ -12,7 +15,7 @@ def setup_logging():
     console_handler.setFormatter(formatter)
 
     file_handler = TimedRotatingFileHandler(
-        "logs/bot.log",
+        LOG_PATH / LOG_FILE,
         when="midnight",
         interval=1,
         backupCount=30,
