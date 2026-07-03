@@ -1,7 +1,6 @@
 from typing import List
-
 import aiosqlite
-from database import connect
+from helpers.general import connect
 from models.registration import Registration
 
 

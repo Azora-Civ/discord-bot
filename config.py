@@ -1,6 +1,7 @@
 import os
 import discord
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -8,7 +9,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
 GUILD = discord.Object(id=GUILD_ID)
-DB_PATH = "azora.db"
+DB_PATH = os.getenv("DB_PATH") or "azora.db"
+DB_BACKUP_DIR = Path(os.getenv("DB_BACKUP_DIR") or "backups")
+DB_MAX_BACKUPS = os.getenv("DB_MAX_BACKUPS") or 10
 
 # Registration
 REGISTRATION_ADMIN_ROLE_ID_KEY = "registration.admin_role_id"
