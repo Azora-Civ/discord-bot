@@ -2,8 +2,10 @@ import discord
 from helpers.general import processing_response
 from repositories.registrations import RegistrationRepository
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from services.registration_service import RegistrationService
+
 
 class RegistrationForceAcceptView(discord.ui.View):
     def __init__(self):

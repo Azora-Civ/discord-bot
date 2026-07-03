@@ -4,8 +4,10 @@ from models.person import Citizenship
 from models.registration import Registration
 from helpers.general import processing_response
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from services.registration_service import RegistrationService
+
 
 class RegistrationModal(discord.ui.Modal, title="Citizen/Resident Registration"):
     def __init__(self, citizenship: Citizenship):

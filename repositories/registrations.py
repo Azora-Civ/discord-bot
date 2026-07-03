@@ -4,6 +4,7 @@ import aiosqlite
 from database import connect
 from models.registration import Registration
 
+
 class RegistrationRepository:
     async def create_table(self) -> None:
         async with connect() as db:
@@ -29,7 +30,8 @@ class RegistrationRepository:
 
     async def create(self, registration: Registration) -> Registration:
         async with connect() as db:
-            cursor = await db.execute("""
+            cursor = await db.execute(
+                """
                 INSERT INTO registrations (
                     user_id,
                     citizenship_type,
@@ -43,18 +45,20 @@ class RegistrationRepository:
                     status
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                registration.user_id,
-                registration.citizenship_type,
-                registration.in_game_name,
-                registration.about,
-                registration.follow_rules,
-                registration.citizenry,
-                int(registration.snitch_hit),
-                registration.thread_id,
-                registration.message_id,
-                registration.status,
-            ))
+            """,
+                (
+                    registration.user_id,
+                    registration.citizenship_type,
+                    registration.in_game_name,
+                    registration.about,
+                    registration.follow_rules,
+                    registration.citizenry,
+                    int(registration.snitch_hit),
+                    registration.thread_id,
+                    registration.message_id,
+                    registration.status,
+                ),
+            )
             await db.commit()
             registration_id = cursor.lastrowid
 
@@ -69,7 +73,8 @@ class RegistrationRepository:
             raise ValueError("Cannot update registration without id")
 
         async with connect() as db:
-            await db.execute("""
+            await db.execute(
+                """
                 UPDATE registrations
                 SET
                     user_id = ?,
@@ -83,19 +88,21 @@ class RegistrationRepository:
                     message_id = ?,
                     status = ?
                 WHERE id = ?
-            """, (
-                registration.user_id,
-                registration.citizenship_type,
-                registration.in_game_name,
-                registration.about,
-                registration.follow_rules,
-                registration.citizenry,
-                int(registration.snitch_hit),
-                registration.thread_id,
-                registration.message_id,
-                registration.status,
-                registration.id,
-            ))
+            """,
+                (
+                    registration.user_id,
+                    registration.citizenship_type,
+                    registration.in_game_name,
+                    registration.about,
+                    registration.follow_rules,
+                    registration.citizenry,
+                    int(registration.snitch_hit),
+                    registration.thread_id,
+                    registration.message_id,
+                    registration.status,
+                    registration.id,
+                ),
+            )
             await db.commit()
 
     async def upsert(self, registration: Registration) -> None:
@@ -107,54 +114,69 @@ class RegistrationRepository:
 
     async def get_by_id(self, registration_id: int) -> Registration | None:
         async with connect() as db:
-            cursor = await db.execute("""
+            cursor = await db.execute(
+                """
                 SELECT *
                 FROM registrations
                 WHERE id = ?
-            """, (registration_id,))
+            """,
+                (registration_id,),
+            )
             row = await cursor.fetchone()
 
         return self._row_to_registration(row) if row else None
 
     async def get_by_user_id(self, user_id: int) -> List[Registration]:
         async with connect() as db:
-            cursor = await db.execute("""
+            cursor = await db.execute(
+                """
                 SELECT *
                 FROM registrations
                 WHERE user_id = ?
-            """, (user_id,))
+            """,
+                (user_id,),
+            )
             rows = await cursor.fetchall()
 
         return [self._row_to_registration(row) for row in rows]
 
     async def get_by_ign(self, ign):
         async with connect() as db:
-            cursor = await db.execute("""
+            cursor = await db.execute(
+                """
                 SELECT *
                 FROM registrations
                 WHERE in_game_name = ?
-            """, (ign,))
+            """,
+                (ign,),
+            )
             row = await cursor.fetchone()
 
         return self._row_to_registration(row) if row else None
 
     async def get_by_thread_id(self, thread_id: int) -> Registration | None:
         async with connect() as db:
-            cursor = await db.execute("""
+            cursor = await db.execute(
+                """
                 SELECT *
                 FROM registrations
                 WHERE thread_id = ?
-            """, (thread_id,))
+            """,
+                (thread_id,),
+            )
             row = await cursor.fetchone()
 
         return self._row_to_registration(row) if row else None
 
     async def delete(self, registration_id: int) -> None:
         async with connect() as db:
-            await db.execute("""
+            await db.execute(
+                """
                 DELETE FROM registrations
                 WHERE id = ?
-            """, (registration_id,))
+            """,
+                (registration_id,),
+            )
             await db.commit()
 
     def _row_to_registration(self, row: aiosqlite.Row) -> Registration:
