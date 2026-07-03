@@ -1,4 +1,4 @@
-from database import connect
+from helpers.general import connect
 
 
 class KeyValueRepository:
