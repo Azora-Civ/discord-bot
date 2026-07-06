@@ -123,12 +123,6 @@ class RegistrationCog(commands.Cog):
             await self.service.hit_registration_snitch(self.bot, ign)
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
-    bot.add_view(RegistrationView())
-    bot.add_view(RegistrationResponseView())
-
-
 def get_person_embed(user: discord.User | discord.Member, person: Person | None) -> discord.Embed:
     if person is None:
         embed = discord.Embed(
@@ -159,3 +153,9 @@ def get_person_embed(user: discord.User | discord.Member, person: Person | None)
     )
 
     return embed
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
+    bot.add_view(RegistrationView())
+    bot.add_view(RegistrationResponseView())
