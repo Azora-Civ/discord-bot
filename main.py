@@ -25,6 +25,7 @@ async def main():
     await init_db()
     async with bot:
         await bot.load_extension("cogs.registration_cog")
+        await bot.load_extension("cogs.permissions_cog")
         await bot.start(TOKEN)
 
 

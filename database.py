@@ -6,6 +6,8 @@ from config import DB_PATH, DB_BACKUP_DIR, DB_MAX_BACKUPS
 from repositories.key_values import KeyValueRepository
 from repositories.people import PeopleRepository
 from repositories.registrations import RegistrationRepository
+from repositories.permissions import PermissionsRepository
+from repositories.group_permissions import GroupPermissionsRepository
 
 log = logging.getLogger(__name__)
 
@@ -60,5 +62,7 @@ async def init_db():
     await PeopleRepository().create_table()
     await KeyValueRepository().create_table()
     await RegistrationRepository().create_table()
+    await PermissionsRepository().create_table()
+    await GroupPermissionsRepository().create_table()
 
     log.info("Database initialized")

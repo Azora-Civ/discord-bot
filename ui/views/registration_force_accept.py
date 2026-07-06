@@ -12,7 +12,11 @@ class RegistrationForceAcceptView(discord.ui.View):
         super().__init__(timeout=60)
 
     @discord.ui.button(label="Accept Anyway...", style=discord.ButtonStyle.red)
-    async def force_accept(self, button, interaction):
+    async def force_accept(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         async with processing_response(interaction):
             thread_id = interaction.channel_id
             repo = RegistrationRepository()

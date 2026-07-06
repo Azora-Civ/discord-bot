@@ -33,6 +33,21 @@ class PeopleRepository:
 
             return self._row_to_person(row)
 
+    async def find_by_ign(self, ign: str) -> Person | None:
+        async with connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id, in_game_name, citizenship, created_at
+                FROM people
+                WHERE in_game_name = ?
+                """,
+                (ign,),
+            )
+
+            row = await cursor.fetchone()
+
+            return self._row_to_person(row) if row else None
+
     async def create(self, person: Person) -> None:
         async with connect() as db:
             await db.execute(
@@ -81,7 +96,7 @@ class PeopleRepository:
             )
             await db.commit()
 
-    async def list_all(self) -> list[Person]:
+    async def fetch_all(self) -> list[Person]:
         async with connect() as db:
             cursor = await db.execute(
                 """

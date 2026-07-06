@@ -9,11 +9,19 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
 GUILD = discord.Object(id=GUILD_ID)
+KIRA_USER_ID = os.getenv("KIRA_USER_ID") or 952325487663939645
+
+
+# DB
 DB_PATH = os.getenv("DB_PATH") or "azora.db"
 DB_BACKUP_DIR = Path(os.getenv("DB_BACKUP_DIR") or "backups")
 DB_MAX_BACKUPS = os.getenv("DB_MAX_BACKUPS") or 10
+
+
+# Logging
 LOG_FILE = os.getenv("LOG_FILE") or "bot.log"
 LOG_PATH = Path(os.getenv("LOG_PATH") or "logs")
+
 
 # Registration
 REGISTRATION_ADMIN_ROLE_ID_KEY = "registration.admin_role_id"

@@ -1,4 +1,7 @@
+import logging
+
 import discord
+from discord import Member
 from discord.ext import commands
 
 import config as cfg
@@ -7,8 +10,10 @@ from models.registration import Registration, RegistrationStatus
 from repositories.key_values import KeyValueRepository
 from repositories.people import PeopleRepository
 from repositories.registrations import RegistrationRepository
+from ui.panels.registration_panel import registration_panel
 from ui.views.registration_force_accept import RegistrationForceAcceptView
-from ui.views.registration_response_view import RegistrationResponseView
+
+log = logging.getLogger(__name__)
 
 
 class RegistrationService:
@@ -22,20 +27,11 @@ class RegistrationService:
         p_repo = PeopleRepository()
         user_id = registration.user_id
 
-        # Get person and create if they are new
+        # # Get person and create if they are new
         person = await p_repo.get_by_user_id(user_id)
-        if person is None:
-            person = Person(
-                user_id=user_id,
-                citizenship=Citizenship.PENDING,
-                in_game_name=registration.in_game_name,
-            )
-            await p_repo.upsert(person)
 
         # If already citizen count snitch as hit
-        registration.snitch_hit = (person.citizenship != Citizenship.PENDING) and (
-            person.in_game_name == registration.in_game_name
-        )
+        registration.snitch_hit = person is not None and person.in_game_name == registration.in_game_name
 
         # Reject pending registration for this person
         previous_registrations = await r_repo.get_by_user_id(user_id)
@@ -58,7 +54,7 @@ class RegistrationService:
             "Configured registration channel is not a forum channel."
         )
 
-        msg = self._get_msg(registration)
+        msg = registration_panel(registration)
 
         # Case 1: new registration create forum thread + starter message
         if (
@@ -115,9 +111,22 @@ class RegistrationService:
             return
 
         # Update person
-        person = await p_repo.get_by_user_id(registration.user_id)
+        person = await p_repo.get_by_user_id(registration.user_id) or Person(
+            user_id=registration.user_id,
+            in_game_name=registration.in_game_name,
+            citizenship=registration.citizenship_type
+        )
         person.citizenship = registration.citizenship_type
-        await p_repo.update(person)
+        await p_repo.upsert(person)
+
+        try:
+            guild = interaction.guild
+            member: Member = guild.get_member(person.user_id) or await guild.fetch_member(
+                person.user_id
+            )
+            await member.edit(nick=registration.in_game_name)
+        except:
+            log.exception("Failed to edit nickname")
 
         # Update registration
         registration.status = RegistrationStatus.ACCEPTED
@@ -132,17 +141,11 @@ class RegistrationService:
             return
 
         r_repo = RegistrationRepository()
-        p_repo = PeopleRepository()
-
-        # Update person (delete if not already citizen)
-        person = await p_repo.get_by_user_id(registration.user_id)
-        if person.citizenship is Citizenship.PENDING:
-            await p_repo.delete(person)
 
         # Update registration
         registration.status = RegistrationStatus.REJECTED
-        await r_repo.delete(registration.id)
         await self.update_registration_message(client, registration)
+        await r_repo.delete(registration.id)
 
     async def hit_registration_snitch(self, bot: discord.Client, ign: str):
         r_repo = RegistrationRepository()
@@ -153,56 +156,3 @@ class RegistrationService:
         registration.snitch_hit = True
         await self.update_registration_message(bot, registration)
         await r_repo.update(registration)
-
-    def _get_msg(self, registration: Registration):
-        status = str(registration.status).title()
-        citizenship = str(registration.citizenship_type).title()
-
-        snitch_hit = "✅" if registration.snitch_hit else "❌"
-
-        embed = discord.Embed(
-            title="📋 New Registration Request",
-            description=f"Submitted by <@{registration.user_id}>",
-            color=discord.Color.gold(),
-        )
-
-        embed.add_field(
-            name="Applicant",
-            value=(
-                f"**User:** <@{registration.user_id}>\n"
-                f"**In-game name:** {registration.in_game_name}\n"
-                f"**Requested status:** {citizenship}"
-            ),
-            inline=False,
-        )
-
-        embed.add_field(
-            name="What goals/skills do you bring to Azora?",
-            value=registration.about or "No answer provided.",
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Will you follow the server rules?",
-            value=registration.follow_rules or "No answer provided.",
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Do you understand you'll start at Level 1?",
-            value=registration.citizenry or "No answer provided.",
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Review Info",
-            value=(f"**Status:** {status}\n**Hit a snitch:** {snitch_hit}"),
-            inline=False,
-        )
-
-        response = {"embed": embed}
-
-        if registration.status == RegistrationStatus.PENDING:
-            response["view"] = RegistrationResponseView()
-
-        return response
