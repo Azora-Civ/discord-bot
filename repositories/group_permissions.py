@@ -1,8 +1,6 @@
-from typing import List
-
+from helpers.general import connect
 from models.permission import PermissionLevel
 from models.permission_group import GroupPermission
-from repositories.database import connect
 
 
 class GroupPermissionsRepository:
@@ -13,7 +11,7 @@ class GroupPermissionsRepository:
                 CREATE TABLE IF NOT EXISTS group_permissions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     role_id INTEGER NOT NULL,
-                    namelayer TEXT NOT NULL,
+                    namelayer TEXT NOT NULL COLLATE NOCASE,
                     level TEXT NOT NULL,
     
                     UNIQUE(role_id, namelayer)
@@ -66,7 +64,7 @@ class GroupPermissionsRepository:
             )
             await db.commit()
 
-    async def fetch_all(self) -> List[GroupPermission]:
+    async def fetch_all(self) -> list[GroupPermission]:
         async with connect() as db:
             cursor = await db.execute("SELECT * FROM group_permissions")
             rows = await cursor.fetchall()
@@ -87,6 +85,19 @@ class GroupPermissionsRepository:
             )
             row = await cursor.fetchone()
             return self._from_row(row) if row else None
+
+    async def correct_namelayer(self, namelayer: str) -> str | None:
+        async with connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT * FROM group_permissions
+                WHERE namelayer = ?
+                LIMIT 1
+                """,
+                (namelayer,),
+            )
+            row = await cursor.fetchone()
+            return self._from_row(row).namelayer if row else None
 
     def _from_row(self, row) -> GroupPermission:
         return GroupPermission(

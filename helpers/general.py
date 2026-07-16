@@ -14,13 +14,19 @@ async def processing_response(
     ephemeral: bool = True,
     log: logging.Logger | None = None,
 ):
-    log: Logger = log or logging.getLogger(__name__)
-    await interaction.response.send_message("Processing...", ephemeral=ephemeral)
+    logger = log or logging.getLogger(__name__)
+    processing_message = "Processing..."
+
+    await interaction.response.send_message(
+        processing_message,
+        ephemeral=ephemeral,
+    )
 
     try:
         yield
+
     except Exception:
-        log.exception(
+        logger.exception(
             "Interaction failed: user=%s guild=%s channel=%s",
             interaction.user.id if interaction.user else None,
             interaction.guild.id if interaction.guild else None,
@@ -29,6 +35,20 @@ async def processing_response(
 
         await interaction.edit_original_response(content=error_message)
         raise
+
+    finally:
+        try:
+            message = await interaction.original_response()
+
+            # Do not overwrite a response that was changed inside the context.
+            if message.content == processing_message:
+                await interaction.edit_original_response(
+                    content="Done.",
+                )
+
+        except discord.NotFound:
+            # The original response was deleted.
+            pass
 
 
 @asynccontextmanager

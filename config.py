@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
+
 import discord
 from dotenv import load_dotenv
-from pathlib import Path
 
 load_dotenv()
 
@@ -29,3 +30,6 @@ REGISTRATION_FORUM_ID_KEY = "registration.forum_id"
 REGISTRATION_SNITCH_CHANNEL_ID_KEY = "registration.snitch_channel_id"
 REGISTRATION_SNITCH_NAME_KEY = "registration.snitch_name"
 REGISTRATION_SNITCH_GROUP_KEY = "registration.snitch_group"
+REGISTRATION_RESIDENT_ROLE_ID_KEY = "registration.resident_role_id"
+REGISTRATION_CITIZEN_ROLE_ID_KEY = "registration.citizen_role_id"
+REGISTRATION_MEMBER_ROLE_ID_KEY = "registration.member_role_id"
