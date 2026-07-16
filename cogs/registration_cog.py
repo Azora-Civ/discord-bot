@@ -1,18 +1,18 @@
 import re
 
 import discord
-from discord import app_commands, User
+from discord import User, app_commands
 from discord.ext import commands
 
 import config as cfg
 from helpers.discord_formatting import timestamp
-from models.person import Person, Citizenship
+from helpers.general import processing_response
+from models.person import Citizenship, Person
 from repositories.key_values import KeyValueRepository
 from repositories.people import PeopleRepository
+from services.registration_service import RegistrationService
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
-from helpers.general import processing_response
-from services.registration_service import RegistrationService
 
 
 class RegistrationCog(commands.Cog):
@@ -63,7 +63,10 @@ class RegistrationCog(commands.Cog):
         async with processing_response(interaction, ephemeral=False):
             await KeyValueRepository().set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
             await interaction.edit_original_response(
-                content=f"Successfully updated the registration channel. Future registrations will now be made under: {channel.mention}"
+                content=(
+                    "Successfully updated the registration channel. Future registrations will now "
+                    f"be made under: {channel.mention}"
+                )
             )
 
     @app_commands.command(
@@ -88,7 +91,51 @@ class RegistrationCog(commands.Cog):
             )
             await self._set_snitch_regex()
             await interaction.edit_original_response(
-                content=f"Successfully updated the registration snitch. Will now listen to snitch hits of '{snitch}' on '{snitch_group}' in {channel.mention}."
+                content=(
+                    "Successfully updated the registration snitch. Will now listen to snitch hits "
+                    f"of '{snitch}' on '{snitch_group}' in {channel.mention}."
+                )
+            )
+
+    @app_commands.command(
+        name="registration-set-roles",
+        description="[ADMIN] Setup roles given when registrations are accepted.",
+    )
+    @app_commands.describe(
+        resident_role="Role given to residents. Leave empty to clear.",
+        citizen_role="Role given to citizens. Leave empty to clear.",
+        member_role="Role given to both residents and citizens. Leave empty to clear.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def set_registration_roles(
+        self,
+        interaction: discord.Interaction,
+        resident_role: discord.Role | None = None,
+        citizen_role: discord.Role | None = None,
+        member_role: discord.Role | None = None,
+    ):
+        async with processing_response(interaction, ephemeral=False):
+            roles = {
+                cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY: resident_role,
+                cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY: citizen_role,
+                cfg.REGISTRATION_MEMBER_ROLE_ID_KEY: member_role,
+            }
+
+            repo = KeyValueRepository()
+            for key, role in roles.items():
+                if role is None:
+                    await repo.delete(key)
+                    continue
+
+                await repo.set_int(key=key, value=role.id)
+
+            await interaction.edit_original_response(
+                content=(
+                    "Successfully updated registration roles.\n"
+                    f"Resident: {resident_role.mention if resident_role else 'None'}\n"
+                    f"Citizen: {citizen_role.mention if citizen_role else 'None'}\n"
+                    f"Resident/Citizen: {member_role.mention if member_role else 'None'}"
+                )
             )
 
     @app_commands.command(

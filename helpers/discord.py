@@ -1,7 +1,9 @@
 from typing import Sequence, List
 
+from _testcapi import awaitType
 from discord import Member, Guild, Role, Client
-
+import asyncio
+import discord
 import config as cfg
 
 
@@ -19,7 +21,12 @@ async def get_members(client) -> Sequence[Member]:
     guild = await get_guild(client)
     return guild.members
 
-
-async def get_guild_roles(client) -> Sequence[Role]:
+async def get_guild_roles(client, user_ids: list[int]) -> Sequence[Role]:
     guild = await get_guild(client)
-    return guild.roles
+    members = await guild.query_members(
+        user_ids=user_ids,
+    )
+
+    roles = set(role for member in members for role in member.roles)
+
+    return list(roles)

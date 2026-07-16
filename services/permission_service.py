@@ -1,16 +1,14 @@
-from typing import List, Dict, Awaitable
-
-import discord
+import discord.ext.commands as commands
+from helpers.discord import get_guild_roles, get_member
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
 from repositories.group_permissions import GroupPermissionsRepository
 from repositories.people import PeopleRepository
 from repositories.permissions import PermissionsRepository
-from helpers.discord import get_member, get_guild_roles, get_guild
 
 
 class PermissionService:
-    def __init__(self, bot: discord.Bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     async def update_user_permission(self, permission: Permission):
@@ -47,7 +45,7 @@ class PermissionService:
         elif delete:
             await gp_repo.delete(old.id)
 
-    async def _get_user_permissions(self, user_ign: str) -> List[Permission]:
+    async def _get_user_permissions(self, user_ign: str) -> list[Permission]:
         people_repo = PeopleRepository()
         gp_repo = GroupPermissionsRepository()
 
@@ -61,11 +59,11 @@ class PermissionService:
 
         # Get group permissions
         role_ids = [role.id for role in member.roles]
-        group_permissions: List[GroupPermission] = [
+        group_permissions: list[GroupPermission] = [
             gp for gp in await gp_repo.fetch_all() if gp.role_id in role_ids
         ]
 
-        perm_map: Dict[str, int] = dict()
+        perm_map: dict[str, int] = dict()
         for gp in group_permissions:
             key = gp.namelayer
             perm_map[key] = max(perm_map.get(key, 0), gp.level.value)
@@ -75,11 +73,11 @@ class PermissionService:
             for nl, level in perm_map.items()
         ]
 
-    async def get_user_permission_commands(self, user_ign: str) -> List[str]:
-        target_perms: List[Permission] = await self._get_user_permissions(user_ign)
-        actual_perms: List[Permission] = await PermissionsRepository().fetch_by_ign(user_ign)
+    async def get_user_permission_commands(self, user_ign: str) -> list[str]:
+        target_perms: list[Permission] = await self._get_user_permissions(user_ign)
+        actual_perms: list[Permission] = await PermissionsRepository().fetch_by_ign(user_ign)
 
-        commands: List[str] = []
+        commands: list[str] = []
 
         target_by_nl = {p.namelayer: p for p in target_perms}
         actual_by_nl = {p.namelayer: p for p in actual_perms}
@@ -100,11 +98,11 @@ class PermissionService:
 
         return commands
 
-    async def _get_namelayer_members(self, namelayer: str) -> List[Permission]:
+    async def _get_namelayer_members(self, namelayer: str) -> list[Permission]:
         people_repo = PeopleRepository()
         gp_repo = GroupPermissionsRepository()
 
-        group_permissions: List[GroupPermission] = [
+        group_permissions: list[GroupPermission] = [
             gp for gp in await gp_repo.fetch_all() if gp.namelayer == namelayer
         ]
 
@@ -112,12 +110,12 @@ class PermissionService:
             return []
 
         people = await people_repo.fetch_all()
-        ign_by_user_id: Dict[int, str] = {person.user_id: person.in_game_name for person in people}
+        ign_by_user_id: dict[int, str] = {person.user_id: person.in_game_name for person in people}
 
-        roles = await get_guild_roles(self.bot)
+        roles = await get_guild_roles(self.bot, list(ign_by_user_id.keys()))
         role_by_id = {role.id: role for role in roles}
 
-        perm_map: Dict[str, int] = {}
+        perm_map: dict[str, int] = {}
 
         for gp in group_permissions:
             role = role_by_id.get(gp.role_id)
@@ -143,11 +141,11 @@ class PermissionService:
             for ign, level in perm_map.items()
         ]
 
-    async def get_namelayer_member_commands(self, namelayer: str) -> List[str]:
-        target_perms: List[Permission] = await self._get_namelayer_members(namelayer)
-        actual_perms: List[Permission] = await PermissionsRepository().fetch_by_namelayer(namelayer)
+    async def get_namelayer_member_commands(self, namelayer: str) -> list[str]:
+        target_perms: list[Permission] = await self._get_namelayer_members(namelayer)
+        actual_perms: list[Permission] = await PermissionsRepository().fetch_by_namelayer(namelayer)
 
-        commands: List[str] = []
+        commands: list[str] = []
 
         target_by_ign = {p.ign: p for p in target_perms}
         actual_by_ign = {p.ign: p for p in actual_perms}
@@ -167,6 +165,12 @@ class PermissionService:
             commands.append(_to_command(target or actual, actual_level, target_level))
 
         return commands
+
+    async def import_permissions(self, entries):
+        namelayers: list[str] = list(set(e.namelayer for e in entries))
+        p_repo = PermissionsRepository()
+        await p_repo.delete_by_namelayers(namelayers)
+        await p_repo.batch_create(entries)
 
 
 def _to_command(
