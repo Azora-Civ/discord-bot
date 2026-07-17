@@ -18,3 +18,4 @@ class Permission:
     level: PermissionLevel
 
     id: int | None = None
+    source: str | None = None
