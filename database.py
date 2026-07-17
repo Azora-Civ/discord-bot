@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from config import DB_PATH, DB_BACKUP_DIR, DB_MAX_BACKUPS
 from repositories.key_values import KeyValueRepository
 from repositories.people import PeopleRepository
+from repositories.permission_exceptions import PermissionExceptionsRepository
 from repositories.registrations import RegistrationRepository
 from repositories.permissions import PermissionsRepository
 from repositories.group_permissions import GroupPermissionsRepository
@@ -63,6 +64,7 @@ async def init_db():
     await KeyValueRepository().create_table()
     await RegistrationRepository().create_table()
     await PermissionsRepository().create_table()
+    await PermissionExceptionsRepository().create_table()
     await GroupPermissionsRepository().create_table()
 
     log.info("Database initialized")

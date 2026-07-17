@@ -6,11 +6,12 @@ from config import DB_PATH
 import aiosqlite
 import logging
 
+from models.ShownException import ShownException
+
 
 @asynccontextmanager
 async def processing_response(
     interaction: discord.Interaction,
-    error_message: str = "Something went wrong.",
     ephemeral: bool = True,
     log: logging.Logger | None = None,
 ):
@@ -25,6 +26,17 @@ async def processing_response(
     try:
         yield
 
+    except ShownException as e:
+        logger.exception(
+            "Interaction failed: user=%s guild=%s channel=%s",
+            interaction.user.id if interaction.user else None,
+            interaction.guild.id if interaction.guild else None,
+            interaction.channel.id if interaction.channel else None,
+        )
+
+        await interaction.edit_original_response(content=str(e))
+        raise
+
     except Exception:
         logger.exception(
             "Interaction failed: user=%s guild=%s channel=%s",
@@ -33,7 +45,7 @@ async def processing_response(
             interaction.channel.id if interaction.channel else None,
         )
 
-        await interaction.edit_original_response(content=error_message)
+        await interaction.edit_original_response(content="Unexpected error.")
         raise
 
     finally:
