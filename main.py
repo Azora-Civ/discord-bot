@@ -89,7 +89,7 @@ class RoyalSteward(commands.Bot):
         log.info(f"Synced {len(synced)} command(s)")
 
     async def close(self):
-        log.info("Initiating graceful shutdown...")
+        log.info("Initiating shutdown...")
 
         self._accepting_interactions = False
 

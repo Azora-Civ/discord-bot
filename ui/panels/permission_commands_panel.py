@@ -44,25 +44,29 @@ async def permission_command_embeds(
 
 def _permission_command_embeds(title: str, commands: list[str]) -> dict[str, object]:
     if not commands:
-        return paginated_panel([
-            discord.Embed(
-                title=title,
-                description="No commands needed.",
-                color=discord.Color.green(),
-            )
-        ])
+        return paginated_panel(
+            [
+                discord.Embed(
+                    title=title,
+                    description="No commands needed.",
+                    color=discord.Color.green(),
+                )
+            ]
+        )
 
     chunks = _chunk_commands(commands)
     total = len(chunks)
 
-    return paginated_panel([
-        discord.Embed(
-            title=f"{title} ({index}/{total})" if total > 1 else title,
-            description=f"{len(commands)} command(s):\n```{_join_commands(chunk)}```",
-            color=discord.Color.blue(),
-        )
-        for index, chunk in enumerate(chunks, start=1)
-    ])
+    return paginated_panel(
+        [
+            discord.Embed(
+                title=f"{title} ({index}/{total})" if total > 1 else title,
+                description=f"{len(commands)} command(s):\n```{_join_commands(chunk)}```",
+                color=discord.Color.blue(),
+            )
+            for index, chunk in enumerate(chunks, start=1)
+        ]
+    )
 
 
 def _chunk_commands(commands: list[str]) -> list[list[str]]:
@@ -72,7 +76,7 @@ def _chunk_commands(commands: list[str]) -> list[list[str]]:
     current_count = 0
 
     for command in commands:
-        command_length = len(command) + 1
+        command_length = len(command) + 11
 
         if current_chunk and (
             current_length + command_length > MAX_COMMAND_BLOCK_LENGTH or current_count + 1 > MAX_COMMAND_PER_PAGE

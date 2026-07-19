@@ -2,11 +2,18 @@ import discord
 
 from helpers.general import respond
 from models.ShownException import BadStateException
+from ui.views.registration_response_view import _send_permission_commands
 
 
 class RegistrationForceAcceptView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
 
     @discord.ui.button(
         label="Accept Anyway...",
@@ -23,7 +30,7 @@ class RegistrationForceAcceptView(discord.ui.View):
             if not should_process:
                 return
 
-            button.disabled = True
+            self.force_accept.disabled = True
 
             registration = await interaction.client.db.registrations.fetch_by_thread_id(interaction.channel_id)
 
@@ -34,8 +41,5 @@ class RegistrationForceAcceptView(discord.ui.View):
             if cog is None:
                 raise BadStateException("Registration commands are not loaded.")
 
-            await interaction.edit_original_response(
-                content="Accepting registration...",
-                view=self,
-            )
-            await cog.accept_registration(registration, True)
+            citizen = await cog.accept_registration(registration, True)
+            await _send_permission_commands(interaction, citizen)
