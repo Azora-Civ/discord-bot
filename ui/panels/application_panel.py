@@ -98,7 +98,7 @@ async def registration_panel(
         "view": RegistrationResponseView() if registration.status == RegistrationStatus.PENDING else None
     }
 
-    if registration.id is None:
+    if registration.data.thread_id is None:
         response["name"] = f"{citizenship} Application — {registration.in_game_name}"
 
     return response

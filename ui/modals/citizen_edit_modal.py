@@ -1,5 +1,6 @@
 import discord
 
+from helpers.general import respond
 from models.citizen import Citizen, Citizenship
 from models.ShownException import ShownException
 from ui.panels.citizens_panel import citizen_panel
@@ -58,20 +59,24 @@ class CitizenEditModal(discord.ui.Modal, title="Edit citizen"):
         self.add_item(self.citizenship)
 
     async def on_submit(self, interaction: discord.Interaction):
-        from ui.views.citizen_management_view import CitizenManagementView
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        service = interaction.client.citizen_service
-        citizen = await service.update_citizen(
-            self.citizen,
-            in_game_name=str(self.in_game_name.value),
-            user_id=_selected_user_id(self.discord_user_select),
-            citizenship=Citizenship[self.citizenship_select.values[0]],
-        )
+            from ui.views.citizen_management_view import CitizenManagementView
 
-        await interaction.response.edit_message(
-            embed=citizen_panel(citizen),
-            view=CitizenManagementView(citizen),
-        )
+            service = interaction.client.citizen_service
+            citizen = await service.update_citizen(
+                self.citizen,
+                in_game_name=str(self.in_game_name.value),
+                user_id=_selected_user_id(self.discord_user_select),
+                citizenship=Citizenship[self.citizenship_select.values[0]],
+            )
+
+            await interaction.response.edit_message(
+                embed=citizen_panel(citizen),
+                view=CitizenManagementView(citizen),
+            )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception):
         if isinstance(error, ShownException):

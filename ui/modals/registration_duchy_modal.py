@@ -4,6 +4,7 @@ from dataclasses import asdict
 import discord
 
 import config as cfg
+from helpers.general import respond
 from models.duchy import Duchy
 
 
@@ -39,25 +40,29 @@ class RegistrationDuchyModal(discord.ui.Modal, title="Duchy Entry"):
     )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        duchies, errors = _decode(self.duchies.value)
-        errors.extend(_validate(duchies, interaction.guild))
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        if errors:
+            duchies, errors = _decode(self.duchies.value)
+            errors.extend(_validate(duchies, interaction.guild))
+
+            if errors:
+                await interaction.response.send_message(
+                    "Could not update duchies:\n" + "\n".join(f"- {error}" for error in errors),
+                    ephemeral=True,
+                )
+                return
+
+            await self.db.key_values.set(
+                key=cfg.REGISTRATION_DUCHY_KEY,
+                value=json.dumps([asdict(duchy) for duchy in duchies]),
+            )
+
             await interaction.response.send_message(
-                "Could not update duchies:\n" + "\n".join(f"- {error}" for error in errors),
+                f"Updated {len(duchies)} duchies/cities.",
                 ephemeral=True,
             )
-            return
-
-        await self.db.key_values.set(
-            key=cfg.REGISTRATION_DUCHY_KEY,
-            value=json.dumps([asdict(duchy) for duchy in duchies]),
-        )
-
-        await interaction.response.send_message(
-            f"Updated {len(duchies)} duchies/cities.",
-            ephemeral=True,
-        )
 
 
 def _encode(duchies: list[Duchy]) -> str:

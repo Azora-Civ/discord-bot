@@ -1,5 +1,9 @@
 import asyncio
 import logging
+import os
+import signal
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import discord
 from discord.ext import commands
@@ -12,8 +16,10 @@ from services.registration_service import RegistrationService
 from setup_logging import setup_logging
 
 setup_logging()
-
 log = logging.getLogger(__name__)
+
+SHUTDOWN_TIMEOUT_SECONDS = 30
+
 
 class RoyalSteward(commands.Bot):
     def __init__(self):
@@ -26,10 +32,41 @@ class RoyalSteward(commands.Bot):
         self.registration_service = RegistrationService(self.db, self.citizen_service)
         self.permission_service = PermissionService(self.db)
 
+        self._accepting_interactions = True
+        self._active_interactions = 0
+        self._interactions_idle = asyncio.Event()
+        self._interactions_idle.set()
+
+        # Keep track of background tasks
+        self._background_tasks: set[asyncio.Task] = set()
+
         super().__init__(
             command_prefix="!",
             intents=intents,
         )
+
+    def create_task(self, coro, *, name: str | None = None) -> asyncio.Task:
+        """Helper to create and track background tasks"""
+        task = asyncio.create_task(coro, name=name)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
+    @contextmanager
+    def interaction_lease(self) -> Iterator[bool]:
+        if not self._accepting_interactions:
+            yield False
+            return
+
+        self._active_interactions += 1
+        self._interactions_idle.clear()
+
+        try:
+            yield True
+        finally:
+            self._active_interactions -= 1
+            if self._active_interactions == 0:
+                self._interactions_idle.set()
 
     async def setup_hook(self) -> None:
         await self.db.connect()
@@ -42,15 +79,80 @@ class RoyalSteward(commands.Bot):
         log.info(f"Synced {len(synced)} command(s)")
 
     async def close(self):
-        await self.db.close()
+        log.info("Initiating graceful shutdown...")
+
+        self._accepting_interactions = False
+
+        # 1. Wait for active interactions
+        await self.wait_for_interactions()
+
+        # 2. Cancel background tasks
+        if self._background_tasks:
+            log.info("Cancelling %d background task(s)", len(self._background_tasks))
+            for task in list(self._background_tasks):
+                if not task.done():
+                    task.cancel()
+
+            await asyncio.wait(self._background_tasks, timeout=10.0)
+
+        # 3. Close database
+        try:
+            await self.db.close()
+            log.info("Database closed successfully")
+        except Exception as e:
+            log.error("Error closing database: %s", e)
+
+        # 4. Let discord.py do its cleanup
         await super().close()
+        log.info("Bot shutdown complete")
+
+    async def wait_for_interactions(self) -> None:
+        if self._active_interactions == 0:
+            return
+
+        log.info("Waiting for %d active interaction(s) to finish...", self._active_interactions)
+
+        try:
+            await asyncio.wait_for(
+                self._interactions_idle.wait(),
+                timeout=SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            log.warning(
+                "Timed out waiting for %d interaction(s) — forcing shutdown",
+                self._active_interactions,
+            )
+
+    # Optional: Add a method to cleanly stop the bot from anywhere
+    async def safe_shutdown(self):
+        """Call this from anywhere to trigger graceful shutdown"""
+        if not self.is_closing():
+            asyncio.create_task(self.close())
 
 
 async def main():
     bot = RoyalSteward()
 
-    async with bot:
-        await bot.start(TOKEN)
+    # Add OS signal handlers
+    async def handle_signal(sig):
+        log.info(f"Received signal {sig.name}")
+        await bot.safe_shutdown()
+
+    if os.name == "posix":  # Linux / macOS
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+
+    try:
+        async with bot:
+            await bot.start(TOKEN)
+    except asyncio.CancelledError:
+        log.info("Shutdown requested via cancellation")
+    except Exception as e:
+        log.error("Unexpected error during bot runtime", exc_info=True)
+    finally:
+        log.info("Main loop exited")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -6,16 +6,20 @@ import discord.ext.commands as commands
 from discord import Member, app_commands
 
 import config as cfg
-from cogs.citizens_cog import ign_from_user
-from helpers.discord import get_guild, get_member
-from helpers.general import processing_response
+from helpers.citizens import ign_from_user
+from helpers.general import respond
+from helpers.permissions import (
+    corrected_namelayer,
+    namelayer_permission_panel,
+    resolve_permission_target,
+    user_permission_panel,
+)
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
-from models.ShownException import BadRequestException, BadStateException, NotFoundException
+from models.ShownException import BadStateException
 from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.modals.namelayer_import_modal import NameLayerImportModal
 from ui.panels.permission_commands_panel import permission_command_embeds
-from ui.panels.permission_list import permission_list_members, permission_list_namelayers
 
 REGEX = re.compile(r"^Running command `(.+?)` as .+$")
 log = logging.getLogger(__name__)
@@ -25,57 +29,6 @@ class PermissionsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.service = bot.permission_service
-
-    async def _role_context_for_user(self, ign: str) -> dict[int, str]:
-        citizen = await self.bot.db.citizens.fetch_by_ign(ign)
-        if citizen is None or citizen.user_id is None:
-            return {}
-
-        member = await get_member(self.bot, citizen.user_id)
-        if member is None:
-            return {}
-
-        return {role.id: role.mention for role in member.roles}
-
-    async def _role_context_for_namelayer(
-        self,
-        namelayer: str,
-    ) -> tuple[dict[int, list[str]], dict[int, str]]:
-        group_permissions = [
-            gp
-            for gp in await self.bot.db.group_permissions.fetch_all()
-            if gp.namelayer == namelayer
-        ]
-        people = await self.bot.db.citizens.fetch_all()
-        ign_by_user_id = {
-            person.user_id: person.in_game_name
-            for person in people
-            if person.user_id is not None
-        }
-        if not ign_by_user_id:
-            return {}, {}
-
-        guild = await get_guild(self.bot)
-        members = await guild.query_members(
-            user_ids=list(ign_by_user_id.keys()),
-        )
-        role_member_igns_by_id: dict[int, list[str]] = {}
-        role_sources_by_id: dict[int, str] = {}
-
-        for gp in group_permissions:
-            role = guild.get_role(gp.role_id)
-            if role is None:
-                continue
-
-            role_sources_by_id[role.id] = role.mention
-            role_member_igns_by_id[role.id] = [
-                ign_by_user_id[member.id]
-                for member in members
-                if member.id in ign_by_user_id
-                and any(member_role.id == role.id for member_role in member.roles)
-            ]
-
-        return role_member_igns_by_id, role_sources_by_id
 
     root_group = app_commands.Group(
         name="perms",
@@ -97,7 +50,10 @@ class PermissionsCog(commands.Cog):
         user: Member | None = None,
         ign: str | None = None,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if role is not None:
                 await self.service.update_group_permission(
                     GroupPermission(
@@ -111,13 +67,7 @@ class PermissionsCog(commands.Cog):
                     content=f"Successfully updated permissions for users with {role.mention} to {namelayer} {level}.")
                 return
 
-            name = ign
-            if ign is None and user is not None:
-                ign = await ign_from_user(self.bot, user)
-                name = user.mention
-
-            if ign is None:
-                raise BadRequestException("Must pass either a role, ign or citizen")
+            ign, name = await resolve_permission_target(self.bot, ign=ign, user=user)
 
             await self.service.update_user_permission(
                 Permission(
@@ -141,16 +91,20 @@ class PermissionsCog(commands.Cog):
         self,
         interaction: discord.Interaction
     ) -> None:
-        all_groups = await self.bot.db.group_permissions.fetch_all()
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        namelayers = list(set(group.namelayer for group in all_groups))
+            all_groups = await self.bot.db.group_permissions.fetch_all()
 
-        if not namelayers:
-            raise BadStateException("No NameLayers were found.")
+            namelayers = list(set(group.namelayer for group in all_groups))
 
-        await interaction.response.send_modal(
-            NameLayerImportModal(namelayers)
-        )
+            if not namelayers:
+                raise BadStateException("No NameLayers were found.")
+
+            await interaction.response.send_modal(
+                NameLayerImportModal(namelayers)
+            )
 
 
     @root_group.command(
@@ -166,11 +120,12 @@ class PermissionsCog(commands.Cog):
         user: Member | None = None,
         ign: str | None = None,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if namelayer is not None:
-                corrected_namelayer = await self.bot.db.group_permissions.correct_namelayer(namelayer)
-                if corrected_namelayer is None:
-                    raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
+                await corrected_namelayer(self.bot, namelayer)
 
             user = user or interaction.user
 
@@ -190,41 +145,29 @@ class PermissionsCog(commands.Cog):
             user: Member | None = None,
             ign: str | None = None,
     ) -> None:
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if namelayer is not None:
-                namelayer = await self.bot.db.group_permissions.correct_namelayer(namelayer)
-                if namelayer is None:
-                    raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
-                actual = await self.bot.db.permissions.fetch_by_namelayer(namelayer)
-                role_member_igns_by_id, role_sources_by_id = await self._role_context_for_namelayer(namelayer)
-                target = await self.service.get_namelayer_members(
-                    namelayer,
-                    role_member_igns_by_id,
-                    role_sources_by_id,
-                )
+                namelayer = await corrected_namelayer(self.bot, namelayer)
 
                 await interaction.edit_original_response(
                     content=None,
-                    **permission_list_members(actual, target, namelayer)
+                    **await namelayer_permission_panel(self.bot, namelayer)
                 )
                 return
 
 
-            name = ign
-            if ign is None:
-                user = interaction.user if user is None else user
-                ign = await ign_from_user(self.bot, user)
-                name = user.mention
-
-            actual = await self.bot.db.permissions.fetch_by_ign(ign)
-            target = await self.service.get_user_permissions(
-                ign,
-                await self._role_context_for_user(ign),
+            ign, name = await resolve_permission_target(
+                self.bot,
+                ign=ign,
+                user=interaction.user if user is None else user,
             )
 
             await interaction.edit_original_response(
                 content=None,
-                **permission_list_namelayers(actual, target, name)
+                **await user_permission_panel(self.bot, ign, name)
             )
 
     @root_group.command(
@@ -232,16 +175,14 @@ class PermissionsCog(commands.Cog):
         description="List the namelayers you have perms to or alternatively should have."
     )
     async def mine(self, interaction: discord.Interaction):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             ign = await ign_from_user(self.bot, interaction.user)
-            actual = await self.bot.db.permissions.fetch_by_ign(ign)
-            target = await self.service.get_user_permissions(
-                ign,
-                await self._role_context_for_user(ign),
-            )
             await interaction.edit_original_response(
-                embeds=permission_list_namelayers(actual, target, interaction.user.mention),
                 content=None,
+                **await user_permission_panel(self.bot, ign, interaction.user.mention),
             )
 
 

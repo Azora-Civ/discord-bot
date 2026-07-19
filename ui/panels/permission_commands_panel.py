@@ -1,8 +1,12 @@
 import discord
 from discord import Client, Member
 
-from cogs.citizens_cog import ign_from_user
-from models.ShownException import BadRequestException, NotFoundException
+from helpers.permissions import (
+    corrected_namelayer,
+    resolve_permission_target,
+    role_context_for_namelayer,
+    role_context_for_user,
+)
 from ui.panels.paginated_panel import paginated_panel
 
 MAX_COMMAND_BLOCK_LENGTH = 3500
@@ -14,37 +18,28 @@ async def permission_command_embeds(
         ign: str | None = None,
         user: Member | None = None
 ) -> dict[str, object]:
-    cog = client.get_cog("PermissionsCog")
-
     if namelayer is not None:
-        corrected_namelayer = await client.db.group_permissions.correct_namelayer(namelayer)
-        if corrected_namelayer is None:
-            raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
+        namelayer = await corrected_namelayer(client, namelayer)
 
-        role_member_igns_by_id, role_sources_by_id = await cog._role_context_for_namelayer(
-            corrected_namelayer
+        role_member_igns_by_id, role_sources_by_id = await role_context_for_namelayer(
+            client,
+            namelayer,
         )
         return _permission_command_embeds(
-            title=f"Commands to align '{corrected_namelayer}' namelayer",
-            commands=await cog.service.get_namelayer_member_commands(
-                corrected_namelayer,
+            title=f"Commands to align '{namelayer}' namelayer",
+            commands=await client.permission_service.get_namelayer_member_commands(
+                namelayer,
                 role_member_igns_by_id,
                 role_sources_by_id,
             ),
         )
 
-    if ign is None:
-        if user is None:
-            raise BadRequestException("Must pass either a role, ign or citizen.")
-
-        ign = await ign_from_user(client, user)
-
-    name = user.mention if user else ign
+    ign, name = await resolve_permission_target(client, ign=ign, user=user)
     return _permission_command_embeds(
         title=f"Commands to align permissions for {name}",
-        commands=await cog.service.get_user_permission_commands(
+        commands=await client.permission_service.get_user_permission_commands(
             ign,
-            await cog._role_context_for_user(ign),
+            await role_context_for_user(client, ign),
         ),
     )
 

@@ -1,6 +1,6 @@
 import discord
 
-from helpers.general import processing_response
+from helpers.general import respond
 from models.registration import Registration
 from models.ShownException import BadRequestException
 from ui.modals.citizen_application_modal import citizen_application_modal
@@ -20,7 +20,10 @@ class RegistrationView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        async with processing_response(interaction, show_processing=False):
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
             citizen = await interaction.client.db.citizens.fetch_by_user_id(interaction.user.id)
             if citizen is not None:
                 raise BadRequestException("You are already registered!")
@@ -45,7 +48,10 @@ class RegistrationView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        async with processing_response(interaction, show_processing=False):
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
             citizen = await interaction.client.db.citizens.fetch_by_user_id(interaction.user.id)
             if citizen is None:
                 raise BadRequestException(

@@ -2,7 +2,7 @@
 import discord
 
 from helpers.encoding import deflate_text, inflate_text
-from helpers.general import processing_response
+from helpers.general import respond
 from models.permission import Permission, PermissionLevel
 
 
@@ -32,7 +32,10 @@ class NameLayerImportModal(
         self.macro_input.default = compressed_input
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             macro_output = self.macro_input.value
             entries = parse_results(macro_output)
             await interaction.client.permission_service.import_permissions(entries)

@@ -34,17 +34,33 @@ class CitizenService:
         )
         return citizen
 
-    async def list_citizens(self, ign: str | None = None) -> list[Citizen]:
-        citizens = await self.repo.fetch_all()
-        if ign is None or not ign.strip():
-            return citizens
+    async def list_citizens(
+        self,
+        ign: str | None = None,
+        last_online_days: int | None = None,
+    ) -> list[Citizen]:
+        if last_online_days is not None and last_online_days < 1:
+            raise BadRequestException("Last online days must be at least 1.")
 
-        needle = ign.strip().casefold()
-        return [
-            citizen
-            for citizen in citizens
-            if needle in citizen.in_game_name.casefold()
-        ]
+        citizens = await self.repo.fetch_all()
+
+        if ign is not None and ign.strip():
+            needle = ign.strip().casefold()
+            citizens = [
+                citizen
+                for citizen in citizens
+                if needle in citizen.in_game_name.casefold()
+            ]
+
+        if last_online_days is not None:
+            cutoff = datetime.now(UTC) - timedelta(days=last_online_days)
+            citizens = [
+                citizen
+                for citizen in citizens
+                if _aware(citizen.last_online) >= cutoff
+            ]
+
+        return citizens
 
     async def get_citizen(
         self,
