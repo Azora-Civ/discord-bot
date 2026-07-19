@@ -3,7 +3,7 @@ from helpers.discord import get_guild_roles, get_member
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
 from repositories.group_permissions import GroupPermissionsRepository
-from repositories.people import PeopleRepository
+from repositories.citizens import CitizenRepository
 from repositories.permission_exceptions import PermissionExceptionsRepository
 from repositories.permissions import PermissionsRepository
 
@@ -28,12 +28,12 @@ class PermissionService:
         await _compare_and_update(old, permission, gp_repo)
 
     async def get_user_permissions(self, user_ign: str) -> list[Permission]:
-        people_repo = PeopleRepository()
+        people_repo = CitizenRepository()
         gp_repo = GroupPermissionsRepository()
         pe_repo = PermissionExceptionsRepository()
 
-        person = await people_repo.find_by_ign(user_ign)
-        member = await get_member(self.bot, person.user_id) if person is not None else None
+        person = await people_repo.fetch_by_ign(user_ign)
+        member = await get_member(self.bot, person.user_id) if person and person.user_id else None
         roles = member.roles if member is not None else []
 
         role_by_id = {role.id: role for role in roles}
@@ -72,7 +72,7 @@ class PermissionService:
         return list(perm_map.values())
 
     async def get_namelayer_members(self, namelayer: str) -> list[Permission]:
-        people_repo = PeopleRepository()
+        people_repo = CitizenRepository()
         gp_repo = GroupPermissionsRepository()
         pe_repo = PermissionExceptionsRepository()
 

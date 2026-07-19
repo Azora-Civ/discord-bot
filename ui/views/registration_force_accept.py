@@ -11,7 +11,11 @@ class RegistrationForceAcceptView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
 
-    @discord.ui.button(label="Accept Anyway...", style=discord.ButtonStyle.red)
+    @discord.ui.button(
+        label="Accept Anyway...",
+        style=discord.ButtonStyle.red,
+        custom_id="registration_force_accept_view:accept_anyway",
+    )
     async def force_accept(
         self,
         interaction: discord.Interaction,
@@ -20,9 +24,9 @@ class RegistrationForceAcceptView(discord.ui.View):
         async with processing_response(interaction):
             thread_id = interaction.channel_id
             repo = RegistrationRepository()
-            registration = await repo.get_by_thread_id(thread_id)
+            registration = await repo.fetch_by_thread_id(thread_id)
 
             assert registration is not None, f"Couldn't find registration"
 
             service: RegistrationService = interaction.client.get_cog("RegistrationCog").service
-            await service.accept_registration(interaction, registration, True)
+            await service.accept_registration(registration, True)

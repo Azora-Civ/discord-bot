@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 
 from config import DB_PATH, DB_BACKUP_DIR, DB_MAX_BACKUPS
 from repositories.key_values import KeyValueRepository
-from repositories.people import PeopleRepository
+from repositories.citizens import CitizenRepository
 from repositories.permission_exceptions import PermissionExceptionsRepository
 from repositories.registrations import RegistrationRepository
 from repositories.permissions import PermissionsRepository
@@ -60,7 +60,7 @@ async def init_db():
 
     await backup_db()
 
-    await PeopleRepository().create_table()
+    await CitizenRepository().create_table()
     await KeyValueRepository().create_table()
     await RegistrationRepository().create_table()
     await PermissionsRepository().create_table()

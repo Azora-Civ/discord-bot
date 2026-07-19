@@ -5,14 +5,14 @@ from discord import Member
 from discord.ext import commands
 
 import config as cfg
-from models.person import Citizenship, Person
+from helpers.discord import get_member, get_message
+from models.citizen import Citizen, Citizenship
 from models.registration import Registration, RegistrationStatus
+from models.ShownException import BadRequestException, BadStateException
+from repositories.citizens import CitizenRepository
 from repositories.key_values import KeyValueRepository
-from repositories.people import PeopleRepository
 from repositories.registrations import RegistrationRepository
-from services.permission_service import PermissionService
-from ui.panels.permission_commands_panel import permission_command_embeds
-from ui.panels.registration_panel import registration_panel
+from ui.panels.application_panel import registration_panel
 from ui.views.registration_force_accept import RegistrationForceAcceptView
 
 log = logging.getLogger(__name__)
@@ -22,113 +22,150 @@ class RegistrationService:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def request_registration(
-        self, interaction: discord.Interaction, registration: Registration
-    ):
+    async def submit_citizen_application(self, registration: Registration):
         r_repo = RegistrationRepository()
-        p_repo = PeopleRepository()
-        user_id = registration.user_id
+        c_repo = CitizenRepository()
 
-        # # Get person and create if they are new
-        person = await p_repo.get_by_user_id(user_id)
-
-        # If already citizen count snitch as hit
-        registration.snitch_hit = (
-            person is not None and person.in_game_name == registration.in_game_name
+        # Fetch the stored version so we can detect changes.
+        existing = (
+            await r_repo.fetch_by_id(registration.id)
+            if registration.id is not None
+            else None
         )
 
-        # Reject pending registration for this person
-        previous_registrations = await r_repo.get_by_user_id(user_id)
-        for reg in previous_registrations:
-            if reg.status != RegistrationStatus.PENDING:
-                continue
-            await self.reject_registration(interaction.client, registration)
+        # The Discord user must not already be a citizen.
+        if registration.is_for_self:
+            citizen = await c_repo.fetch_by_user_id(registration.poster_id)
+            if citizen is not None:
+                raise BadRequestException("You are already a citizen!")
 
-        # Confirm registration
-        await self.update_registration_message(interaction.client, registration)
-        await r_repo.create(registration)
-        await interaction.edit_original_response(content="Registration request submitted!")
+        # The requested IGN must not belong to any citizen.
+        citizen = await c_repo.fetch_by_ign(registration.in_game_name)
+        if citizen is not None:
+            raise BadRequestException(
+                "That in-game name already belongs to a citizen!"
+            )
 
+        # The Discord user must not have another registration.
+        if registration.is_for_self:
+            conflict = await r_repo.fetch_by_user_id(registration.poster_id)
 
-    async def update_registration_message(self, client: discord.Client, registration: Registration):
-        forum_id = await KeyValueRepository().get_int(cfg.REGISTRATION_FORUM_ID_KEY)
-        assert forum_id is not None, "Registration forum is not configured."
+            if conflict is not None and conflict.id != registration.id:
+                raise BadRequestException(
+                    "You already have a citizen application!"
+                )
 
-        channel = client.get_channel(forum_id) or await client.fetch_channel(forum_id)
-        assert isinstance(channel, discord.ForumChannel), (
-            "Configured registration channel is not a forum channel."
-        )
+        # The requested IGN must not be used by another registration.
+        conflict = await r_repo.fetch_by_ign(registration.in_game_name)
 
-        msg = registration_panel(registration)
+        if conflict is not None and conflict.id != registration.id:
+            raise BadRequestException(
+                "That in-game name is already used in another application!"
+            )
 
-        # Case 1: new registration create forum thread + starter message
+        # A snitch hit for the old IGN says nothing about the new IGN.
         if (
-            registration.id is None
-            or registration.thread_id is None
-            or registration.message_id is None
+                existing is not None
+                and existing.in_game_name
+                != registration.in_game_name
         ):
-            thread_with_message = await channel.create_thread(
-                name=f"Registration - {registration.in_game_name}", **msg
+            registration.data.snitch_hit = False
+
+        await self._update_registration(registration)
+
+
+    async def _update_registration(self, registration: Registration):
+        await self._update_registration_message(registration)
+
+        is_new = registration.id is None
+        keep = registration.status == RegistrationStatus.PENDING
+
+        r_repo = RegistrationRepository()
+        if is_new and keep:
+            registration.id = await r_repo.create(registration)
+        elif not is_new and keep:
+            await r_repo.update(registration)
+        elif not is_new and not keep:
+            await r_repo.delete(registration.id)
+
+
+    async def _update_registration_message(self, registration: Registration):
+        bot = self.bot
+
+        forum_id = await KeyValueRepository().get_int(cfg.REGISTRATION_FORUM_ID_KEY)
+        if forum_id is None:
+            raise BadStateException("Registration forum is not configured.")
+
+        channel = bot.get_channel(forum_id) or await bot.fetch_channel(forum_id)
+
+        if not isinstance(channel, discord.ForumChannel):
+            raise BadStateException("Configured registration channel is not a forum channel.")
+
+        msg = await registration_panel(bot, registration)
+
+        # Create thread
+        if registration.id is None:
+            thread_with_message = await channel.create_thread(**msg)
+            registration.data.thread_id = thread_with_message.thread.id
+            registration.data.message_id = thread_with_message.message.id
+            return
+
+        # Fetch old message and edit
+        message = None
+        if registration.data.thread_id and registration.data.message_id:
+            message = await get_message(
+                bot,
+                registration.data.thread_id,
+                registration.data.message_id,
             )
 
-            registration.thread_id = thread_with_message.thread.id
-            registration.message_id = thread_with_message.message.id
+        if message is None:
+            await self.reject_registration(registration)
             return
 
-        # Check if thread exists
-        try:
-            thread = client.get_channel(registration.thread_id) or await client.fetch_channel(
-                registration.thread_id
-            )
+        await message.edit(**msg)
 
-        # Case 2: Thread no longer exists
-        except discord.NotFound:
-            # Thread was deleted
-            await self.reject_registration(client, registration)
+
+    async def reject_registration(self, registration: Registration):
+        if registration.status == RegistrationStatus.REJECTED:
             return
 
-        if not isinstance(thread, discord.Thread):
-            await self.reject_registration(client, registration)
-            return
-
-        # Case 3: message exists, try to edit it
-        try:
-            message = await thread.fetch_message(registration.message_id)
-            await message.edit(**msg)
-
-        # Case 4: thread exists, but no message is known
-        except discord.NotFound:
-            # Message was deleted, but thread still exists
-            message = await thread.send(**msg)
-            registration.message_id = message.id
+        # Update registration
+        registration.status = RegistrationStatus.REJECTED
+        await self._update_registration(registration)
 
 
     async def accept_registration(
-        self, interaction: discord.Interaction, registration: Registration, force: bool
+        self, registration: Registration, force: bool
     ):
-        r_repo = RegistrationRepository()
-        p_repo = PeopleRepository()
-
-        if not registration.snitch_hit and not force:
-            await interaction.edit_original_response(
-                content=(
-                    "Snitch has not yet been hit for this person! Therefore, the in-game "
-                    f"'{registration.in_game_name}' is unconfirmed."
-                ),
-                view=RegistrationForceAcceptView(),
-            )
+        if registration.status == RegistrationStatus.ACCEPTED:
             return
 
-        # Update person
-        person = await p_repo.get_by_user_id(registration.user_id) or Person(
-            user_id=registration.user_id,
-            in_game_name=registration.in_game_name,
-            citizenship=registration.citizenship_type,
-        )
-        person.citizenship = registration.citizenship_type
-        await p_repo.upsert(person)
+        c_repo = CitizenRepository()
 
-        member = await self._fetch_member(interaction.guild, person.user_id)
+        if not registration.data.snitch_hit and not force:
+            raise BadStateException(
+                content="Snitch has not yet been hit for this person! Therefore, the in-game "
+                f"'{registration.in_game_name}' is unconfirmed.",
+                view=RegistrationForceAcceptView(),
+            )
+
+        # Add citizen
+        citizen = Citizen(
+            user_id=registration.poster_id if registration.is_for_self else None,
+            in_game_name=registration.in_game_name,
+            citizenship=registration.citizenship_type
+        )
+
+        await c_repo.create(citizen)
+
+        registration.status = RegistrationStatus.ACCEPTED
+        await self._update_registration(registration)
+
+        if citizen.user_id is None:
+            return
+
+        member = await get_member(self.bot, citizen.user_id)
         if member is not None:
             try:
                 await member.edit(nick=registration.in_game_name)
@@ -136,27 +173,9 @@ class RegistrationService:
                 log.exception("Failed to edit nickname after registration acceptance")
 
             try:
-                await self._sync_registration_roles(member, person.citizenship)
+                await self._sync_registration_roles(member, citizen.citizenship)
             except discord.DiscordException:
                 log.exception("Failed to update roles after registration acceptance")
-
-            await self._send_permission_command_followup(interaction, person.in_game_name)
-
-        # Update registration
-        registration.status = RegistrationStatus.ACCEPTED
-        await r_repo.delete(registration.id)
-        await self.update_registration_message(interaction.client, registration)
-
-
-    async def _fetch_member(self, guild: discord.Guild | None, user_id: int) -> Member | None:
-        if guild is None:
-            return None
-
-        try:
-            return guild.get_member(user_id) or await guild.fetch_member(user_id)
-        except discord.DiscordException:
-            log.exception("Failed to fetch member after registration acceptance")
-            return None
 
 
     async def _sync_registration_roles(self, member: Member, citizenship: Citizenship):
@@ -187,50 +206,20 @@ class RegistrationService:
         if roles_to_remove:
             await member.remove_roles(
                 *roles_to_remove,
-                reason="Registration citizenship role changed",
+                reason="Citizenship changed",
             )
         if roles_to_add:
             await member.add_roles(
                 *roles_to_add,
-                reason="Registration accepted",
+                reason="Citizenship changed",
             )
 
-    async def _send_permission_command_followup(
-        self,
-        interaction: discord.Interaction,
-        in_game_name: str,
-    ) -> None:
-        commands = await PermissionService(self.bot).get_user_permission_commands(in_game_name)
-        embeds = permission_command_embeds(
-            f"Commands to align permissions for {in_game_name}",
-            commands,
-        )
 
-        for embed in embeds:
-            await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-    async def reject_registration(self, client: discord.Client, registration: Registration):
+    async def hit_registration_snitch(self, ign: str):
+        r_repo = RegistrationRepository()
+        registration = await r_repo.fetch_by_ign(ign)
         if registration is None:
             return
 
-        if registration.status == RegistrationStatus.REJECTED:
-            return
-
-        r_repo = RegistrationRepository()
-
-        # Update registration
-        registration.status = RegistrationStatus.REJECTED
-        await self.update_registration_message(client, registration)
-        await r_repo.delete(registration.id)
-
-
-    async def hit_registration_snitch(self, bot: discord.Client, ign: str):
-        r_repo = RegistrationRepository()
-        registration = await r_repo.get_by_ign(ign)
-        if registration is None:
-            return
-
-        registration.snitch_hit = True
-        await self.update_registration_message(bot, registration)
-        await r_repo.update(registration)
+        registration.data.snitch_hit = True
+        await self._update_registration(registration)

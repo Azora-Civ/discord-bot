@@ -1,17 +1,16 @@
 import re
-from email.charset import add_alias
 
 import discord
 import discord.ext.commands as commands
 from discord import app_commands, Member
 
 import config as cfg
+from cogs.citizens_cog import ign_from_user
 from helpers.general import processing_response
 from models.ShownException import NotFoundException, BadRequestException
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
 from repositories.group_permissions import GroupPermissionsRepository
-from repositories.people import PeopleRepository
 from repositories.permissions import PermissionsRepository
 from services.permission_service import PermissionService
 from ui.modals.namelayer_import_modal import NameLayerImportModal
@@ -62,7 +61,7 @@ class PermissionsCog(commands.Cog):
 
             name = ign
             if ign is None and user is not None:
-                ign = await _ign_from_user(user)
+                ign = await ign_from_user(user)
                 name = user.mention
 
             if ign is None:
@@ -121,27 +120,10 @@ class PermissionsCog(commands.Cog):
                 if corrected_namelayer is None:
                     raise NotFoundException("Couldn't find namelayer: {}!".format(namelayer))
 
-                await _send_command_list(
-                    interaction,
-                    title=f"Commands to align '{corrected_namelayer}' namelayer",
-                    commands_to_run=await self.service.get_namelayer_member_commands(corrected_namelayer),
-                )
-                return
+            user = user or interaction.user
 
-            if ign is None:
-                if user is None:
-                    user = interaction.user
-                if user is None:
-                    raise BadRequestException("Must pass either a role, ign or citizen.")
-
-                ign = await _ign_from_user(user)
-
-            name = user.mention if user else ign
-            await _send_command_list(
-                interaction,
-                title=f"Commands to align permissions for {name}",
-                commands_to_run=await self.service.get_user_permission_commands(ign),
-            )
+            msg = await permission_command_embeds(self.bot, namelayer=namelayer, user=user, ign=ign)
+            await interaction.edit_original_response(**msg)
 
     @root_group.command(
         name="list",
@@ -174,7 +156,7 @@ class PermissionsCog(commands.Cog):
             name = ign
             if ign is None:
                 user = interaction.user if user is None else user
-                ign = await _ign_from_user(user)
+                ign = await ign_from_user(user)
                 name = user.mention
 
             actual = await PermissionsRepository().fetch_by_ign(ign)
@@ -191,7 +173,7 @@ class PermissionsCog(commands.Cog):
     )
     async def mine(self, interaction: discord.Interaction):
         async with processing_response(interaction):
-            ign = await _ign_from_user(interaction.user)
+            ign = await ign_from_user(interaction.user)
             actual = await PermissionsRepository().fetch_by_ign(ign)
             target = await self.service.get_user_permissions(ign)
             await interaction.edit_original_response(
@@ -232,23 +214,6 @@ class PermissionsCog(commands.Cog):
             )
 
             await self.service.update_actual_user_permission(perm)
-
-
-async def _send_command_list(
-    interaction: discord.Interaction,
-    title: str,
-    commands_to_run: list[str],
-) -> None:
-    await interaction.edit_original_response(content=None, **permission_command_embeds(title, commands_to_run))
-
-async def _ign_from_user(user: Member) -> str:
-    p_repo = PeopleRepository()
-    person = await p_repo.get_by_user_id(user.id)
-    if not person:
-        raise NotFoundException("User is not registered as a citizen/resident.")
-
-    return person.in_game_name
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PermissionsCog(bot), guild=cfg.GUILD)

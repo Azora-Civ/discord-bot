@@ -1,8 +1,15 @@
 class ShownException(Exception):
     prefix = "Error"
 
-    def __init__(self, message: str):
-        super().__init__(f"{self.prefix}: {message}")
+    def __init__(
+        self,
+        content: str,
+        **msg
+    ):
+        self.data = msg
+        msg["content"] = f"{self.prefix}: {content}"
+
+        super().__init__(msg["content"])
 
 class BadRequestException(ShownException):
     prefix = "Bad Request"
