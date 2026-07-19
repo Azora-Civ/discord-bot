@@ -3,14 +3,18 @@ from typing import TYPE_CHECKING
 from models.citizen import Citizen
 from models.registration import Registration, RegistrationStatus
 from models.ShownException import BadRequestException, BadStateException
+from services.events import ChangeKind, EventHook, RegistrationChangedEvent
 
 if TYPE_CHECKING:
     from database import Database
+    from services.citizen_service import CitizenService
 
 
 class RegistrationService:
-    def __init__(self, db: "Database"):
+    def __init__(self, db: "Database", citizen_service: "CitizenService"):
         self.db = db
+        self.citizen_service = citizen_service
+        self.on_registration_changed = EventHook[RegistrationChangedEvent]("on_registration_changed")
 
     async def submit_citizen_application(self, registration: Registration) -> Registration:
         # Fetch the stored version so we can detect changes.
@@ -57,19 +61,44 @@ class RegistrationService:
         ):
             registration.data.snitch_hit = False
 
-        await self.save_registration(registration)
+        await self.save_registration(registration, source="application_submitted")
         return registration
 
-    async def save_registration(self, registration: Registration) -> Registration:
+    async def save_registration(
+        self,
+        registration: Registration,
+        *,
+        dispatch_events: bool = True,
+        source: str | None = None,
+    ) -> Registration:
         is_new = registration.id is None
         keep = registration.status == RegistrationStatus.PENDING
+        previous = (
+            await self.db.registrations.fetch_by_id(registration.id)
+            if registration.id is not None
+            else None
+        )
+        kind: ChangeKind | None = None
 
         if is_new and keep:
             registration.id = await self.db.registrations.create(registration)
+            kind = ChangeKind.CREATED
         elif not is_new and keep:
             await self.db.registrations.update(registration)
+            kind = ChangeKind.UPDATED
         elif not is_new and not keep:
             await self.db.registrations.delete(registration.id)
+            kind = ChangeKind.DELETED
+
+        if dispatch_events and kind is not None:
+            await self.on_registration_changed.emit(
+                RegistrationChangedEvent(
+                    kind=kind,
+                    registration=registration,
+                    previous=previous,
+                    source=source,
+                )
+            )
 
         return registration
 
@@ -78,7 +107,7 @@ class RegistrationService:
             return registration
 
         registration.status = RegistrationStatus.REJECTED
-        await self.save_registration(registration)
+        await self.save_registration(registration, source="registration_rejected")
         return registration
 
     async def accept_registration(
@@ -99,10 +128,13 @@ class RegistrationService:
             citizenship=registration.citizenship_type,
         )
 
-        await self.db.citizens.create(citizen)
+        await self.citizen_service.create_citizen(
+            citizen,
+            source="registration_accepted",
+        )
 
         registration.status = RegistrationStatus.ACCEPTED
-        await self.save_registration(registration)
+        await self.save_registration(registration, source="registration_accepted")
 
         return citizen
 
@@ -112,5 +144,5 @@ class RegistrationService:
             return None
 
         registration.data.snitch_hit = True
-        await self.save_registration(registration)
+        await self.save_registration(registration, source="snitch_hit")
         return registration

@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
+from services.events import ChangeKind, EventHook, GroupPermissionChangedEvent, PermissionChangedEvent
 
 if TYPE_CHECKING:
     from database import Database
@@ -10,21 +11,50 @@ if TYPE_CHECKING:
 class PermissionService:
     def __init__(self, db: "Database"):
         self.db = db
+        self.on_permission_changed = EventHook[PermissionChangedEvent]("on_permission_changed")
+        self.on_group_permission_changed = EventHook[GroupPermissionChangedEvent]("on_group_permission_changed")
 
     async def update_actual_user_permission(self, permission: Permission):
         old = await self.db.permissions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        await _compare_and_update(old, permission, self.db.permissions)
+        kind = await _compare_and_update(old, permission, self.db.permissions)
+        if kind is not None:
+            await self.on_permission_changed.emit(
+                PermissionChangedEvent(
+                    kind=kind,
+                    permission=permission,
+                    previous=old,
+                    source="actual_permission_updated",
+                )
+            )
 
     async def update_user_permission(self, permission: Permission):
         old = await self.db.permission_exceptions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        await _compare_and_update(old, permission, self.db.permission_exceptions)
+        kind = await _compare_and_update(old, permission, self.db.permission_exceptions)
+        if kind is not None:
+            await self.on_permission_changed.emit(
+                PermissionChangedEvent(
+                    kind=kind,
+                    permission=permission,
+                    previous=old,
+                    source="permission_exception_updated",
+                )
+            )
 
     async def update_group_permission(self, permission: GroupPermission):
         old = await self.db.group_permissions.find_by_role_id_and_namelayer(
             permission.role_id,
             permission.namelayer,
         )
-        await _compare_and_update(old, permission, self.db.group_permissions)
+        kind = await _compare_and_update(old, permission, self.db.group_permissions)
+        if kind is not None:
+            await self.on_group_permission_changed.emit(
+                GroupPermissionChangedEvent(
+                    kind=kind,
+                    permission=permission,
+                    previous=old,
+                    source="group_permission_updated",
+                )
+            )
 
     async def get_user_permissions(
         self,
@@ -200,8 +230,13 @@ async def _compare_and_update(old, new, repo):
 
     if create:
         await repo.create(new)
+        return ChangeKind.CREATED
     elif update:
         new.id = old.id
         await repo.update(new)
+        return ChangeKind.UPDATED
     elif delete:
         await repo.delete(old.id)
+        return ChangeKind.DELETED
+
+    return None

@@ -23,7 +23,7 @@ class RoyalSteward(commands.Bot):
 
         self.db = Database(DB_PATH)
         self.citizen_service = CitizenService(self.db)
-        self.registration_service = RegistrationService(self.db)
+        self.registration_service = RegistrationService(self.db, self.citizen_service)
         self.permission_service = PermissionService(self.db)
 
         super().__init__(

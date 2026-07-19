@@ -1,7 +1,7 @@
 
 import discord
 
-from helpers.deflate import deflate_text, inflate_text
+from helpers.encoding import deflate_text, inflate_text
 from helpers.general import processing_response
 from models.permission import Permission, PermissionLevel
 
