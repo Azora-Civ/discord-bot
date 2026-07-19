@@ -1,9 +1,10 @@
 import json
 
+import config as cfg
 from models.embed_config import EmbedConfig
 from repositories.key_values import KeyValueRepository
 from ui.views.registration_view import RegistrationView
-import config as cfg
+
 
 async def get_embed_config():
     embed_config_json = await KeyValueRepository().get(key=cfg.REGISTRATION_EMBED_KEY)

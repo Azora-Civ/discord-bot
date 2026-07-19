@@ -1,14 +1,15 @@
-import aiosqlite
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from config import DB_PATH, DB_BACKUP_DIR, DB_MAX_BACKUPS
-from repositories.key_values import KeyValueRepository
+import aiosqlite
+
+from config import DB_BACKUP_DIR, DB_MAX_BACKUPS, DB_PATH
 from repositories.citizens import CitizenRepository
-from repositories.permission_exceptions import PermissionExceptionsRepository
-from repositories.registrations import RegistrationRepository
-from repositories.permissions import PermissionsRepository
 from repositories.group_permissions import GroupPermissionsRepository
+from repositories.key_values import KeyValueRepository
+from repositories.permission_exceptions import PermissionExceptionsRepository
+from repositories.permissions import PermissionsRepository
+from repositories.registrations import RegistrationRepository
 
 log = logging.getLogger(__name__)
 

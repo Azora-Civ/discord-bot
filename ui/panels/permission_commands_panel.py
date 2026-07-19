@@ -1,8 +1,8 @@
 import discord
-from discord import Member, Client
+from discord import Client, Member
 
 from cogs.citizens_cog import ign_from_user
-from models.ShownException import NotFoundException, BadRequestException
+from models.ShownException import BadRequestException, NotFoundException
 from repositories.group_permissions import GroupPermissionsRepository
 from services.permission_service import PermissionService
 from ui.panels.paginated_panel import paginated_panel
@@ -21,7 +21,7 @@ async def permission_command_embeds(
     if namelayer is not None:
         corrected_namelayer = await GroupPermissionsRepository().correct_namelayer(namelayer)
         if corrected_namelayer is None:
-            raise NotFoundException("Couldn't find namelayer: {}!".format(namelayer))
+            raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
 
         return _permission_command_embeds(
             title=f"Commands to align '{corrected_namelayer}' namelayer",

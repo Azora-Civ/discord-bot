@@ -1,9 +1,12 @@
-import discord
+import asyncio
 import logging
+
+import discord
 from discord.ext import commands
-from config import TOKEN, GUILD
-from setup_logging import setup_logging
+
+from config import GUILD, TOKEN
 from database import init_db
+from setup_logging import setup_logging
 
 setup_logging()
 
@@ -25,11 +28,9 @@ async def on_ready():
 async def main():
     await init_db()
     async with bot:
+        await bot.load_extension("cogs.citizens_cog")
         await bot.load_extension("cogs.registration_cog")
         await bot.load_extension("cogs.permissions_cog")
         await bot.start(TOKEN)
-
-
-import asyncio
 
 asyncio.run(main())

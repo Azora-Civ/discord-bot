@@ -2,14 +2,14 @@ import re
 
 import discord
 import discord.ext.commands as commands
-from discord import app_commands, Member
+from discord import Member, app_commands
 
 import config as cfg
 from cogs.citizens_cog import ign_from_user
 from helpers.general import processing_response
-from models.ShownException import NotFoundException, BadRequestException
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
+from models.ShownException import BadRequestException, BadStateException, NotFoundException
 from repositories.group_permissions import GroupPermissionsRepository
 from repositories.permissions import PermissionsRepository
 from services.permission_service import PermissionService
@@ -94,7 +94,7 @@ class PermissionsCog(commands.Cog):
         namelayers = list(set(group.namelayer for group in all_groups))
 
         if not namelayers:
-            raise "No NameLayers were provided or found."
+            raise BadStateException("No NameLayers were found.")
 
         await interaction.response.send_modal(
             NameLayerImportModal(namelayers)
@@ -118,7 +118,7 @@ class PermissionsCog(commands.Cog):
             if namelayer is not None:
                 corrected_namelayer = await GroupPermissionsRepository().correct_namelayer(namelayer)
                 if corrected_namelayer is None:
-                    raise NotFoundException("Couldn't find namelayer: {}!".format(namelayer))
+                    raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
 
             user = user or interaction.user
 
@@ -142,7 +142,7 @@ class PermissionsCog(commands.Cog):
             if namelayer is not None:
                 namelayer = await GroupPermissionsRepository().correct_namelayer(namelayer)
                 if namelayer is None:
-                    raise NotFoundException("Couldn't find namelayer: {}!".format(namelayer))
+                    raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
                 actual = await PermissionsRepository().fetch_by_namelayer(namelayer)
                 target = await self.service.get_namelayer_members(namelayer)
 

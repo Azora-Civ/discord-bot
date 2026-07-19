@@ -26,6 +26,7 @@ LOG_PATH = Path(os.getenv("LOG_PATH") or "logs")
 
 # Citizen
 CITIZEN_MOD_ROLE_ID_KEY = "citizen.mod_role_id"
+CITIZEN_SNITCH_CHANNEL_ID_KEY = "citizen.snitch_channel_id"
 
 # Registration
 REGISTRATION_EMBED_KEY = "registration.embed"

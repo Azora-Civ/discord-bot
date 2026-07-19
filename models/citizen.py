@@ -1,12 +1,11 @@
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import StrEnum
 
 
 class Citizenship(StrEnum):
     CITIZEN = "Citizen"
     RESIDENT = "Resident"
-    VISITOR = "Visitor"
 
 
 @dataclass

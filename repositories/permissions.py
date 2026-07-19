@@ -1,6 +1,6 @@
+
 from helpers.general import connect
 from models.permission import Permission, PermissionLevel
-from typing import List
 
 
 class PermissionsRepository:
@@ -106,7 +106,7 @@ class PermissionsRepository:
 
     async def delete_by_namelayers(
             self,
-            namelayers: List[str],
+            namelayers: list[str],
     ) -> int:
         if not namelayers:
             return 0
@@ -126,7 +126,7 @@ class PermissionsRepository:
 
     async def batch_create(
             self,
-            permissions: List[Permission],
+            permissions: list[Permission],
     ) -> None:
         if not permissions:
             return

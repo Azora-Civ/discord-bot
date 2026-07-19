@@ -11,9 +11,9 @@ from services.registration_service import RegistrationService
 from ui.modals.registration_duchy_modal import registration_duchy_modal
 from ui.modals.registration_embed_modal import RegistrationEmbedModal
 from ui.panels.registration_panel import get_embed_config, registration_panel
-from ui.views.registration_force_accept import RegistrationForceAcceptView
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
+
 
 class RegistrationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
