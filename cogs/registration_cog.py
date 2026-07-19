@@ -2,15 +2,15 @@ import logging
 import re
 
 import discord
-from discord import Member, app_commands
+from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
-from helpers.discord import get_member, get_message
+from helpers.discord import get_message
 from helpers.general import processing_response
-from models.citizen import Citizen, Citizenship
 from models.registration import Registration, RegistrationStatus
 from models.ShownException import BadStateException
+from services.events import RegistrationChangedEvent
 from ui.modals.registration_duchy_modal import registration_duchy_modal
 from ui.modals.registration_embed_modal import RegistrationEmbedModal
 from ui.panels.application_panel import registration_panel as application_panel
@@ -26,19 +26,27 @@ class RegistrationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.service = bot.registration_service
+        self.service.on_registration_changed.subscribe(self.handle_registration_changed)
         self.snitch_cache = False
         self.snitch_channel: int | None = None
         self.snitch_regex: re.Pattern[str] | None = None
 
+    @property
+    def key_values(self):
+        return self.bot.db.key_values
+
+    async def handle_registration_changed(self, event: RegistrationChangedEvent) -> None:
+        await self.update_registration_message(event.registration)
+
     async def _set_snitch_regex(self):
         self.snitch_cache = True
 
-        self.snitch_channel = await self.bot.db.key_values.get_int(
+        self.snitch_channel = await self.key_values.get_int(
             key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY
         )
 
-        snitch = await self.bot.db.key_values.get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
-        snitch_group = await self.bot.db.key_values.get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
+        snitch = await self.key_values.get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
+        snitch_group = await self.key_values.get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
 
         if not snitch or not snitch_group:
             self.snitch_regex = None
@@ -50,11 +58,9 @@ class RegistrationCog(commands.Cog):
 
     async def submit_citizen_application(self, registration: Registration):
         await self.service.submit_citizen_application(registration)
-        await self.update_registration_message(registration)
 
     async def reject_registration(self, registration: Registration):
         await self.service.reject_registration(registration)
-        await self.update_registration_message(registration)
 
     async def accept_registration(
         self,
@@ -71,13 +77,10 @@ class RegistrationCog(commands.Cog):
             )
 
         citizen = await self.service.accept_registration(registration, force)
-        await self.update_registration_message(registration)
-
-        if citizen is not None:
-            await self._sync_accepted_member(registration, citizen)
+        return citizen
 
     async def update_registration_message(self, registration: Registration):
-        forum_id = await self.bot.db.key_values.get_int(cfg.REGISTRATION_FORUM_ID_KEY)
+        forum_id = await self.key_values.get_int(cfg.REGISTRATION_FORUM_ID_KEY)
         if forum_id is None:
             raise BadStateException("Registration forum is not configured.")
 
@@ -94,7 +97,7 @@ class RegistrationCog(commands.Cog):
             registration.data.message_id = thread_with_message.message.id
 
             if registration.status == RegistrationStatus.PENDING:
-                await self.service.save_registration(registration)
+                await self.service.save_registration(registration, dispatch_events=False)
             return
 
         message = await get_message(
@@ -107,59 +110,6 @@ class RegistrationCog(commands.Cog):
             return
 
         await message.edit(**msg)
-
-    async def _sync_accepted_member(self, registration: Registration, citizen: Citizen):
-        if citizen.user_id is None:
-            return
-
-        member = await get_member(self.bot, citizen.user_id)
-        if member is None:
-            return
-
-        try:
-            await member.edit(nick=registration.in_game_name)
-        except discord.DiscordException:
-            log.exception("Failed to edit nickname after registration acceptance")
-
-        try:
-            await self._sync_registration_roles(member, citizen.citizenship)
-        except discord.DiscordException:
-            log.exception("Failed to update roles after registration acceptance")
-
-    async def _sync_registration_roles(self, member: Member, citizenship: Citizenship):
-        role_ids = {
-            Citizenship.RESIDENT: await self.bot.db.key_values.get_int(cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY),
-            Citizenship.CITIZEN: await self.bot.db.key_values.get_int(cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY),
-            "member": await self.bot.db.key_values.get_int(cfg.REGISTRATION_MEMBER_ROLE_ID_KEY),
-        }
-
-        managed_role_ids = {role_id for role_id in role_ids.values() if role_id is not None}
-        desired_role_ids = {
-            role_ids["member"],
-            role_ids.get(citizenship),
-        } - {None}
-
-        roles_to_add = [
-            role
-            for role_id in desired_role_ids
-            if (role := member.guild.get_role(role_id)) is not None and role not in member.roles
-        ]
-        roles_to_remove = [
-            role
-            for role in member.roles
-            if role.id in managed_role_ids and role.id not in desired_role_ids
-        ]
-
-        if roles_to_remove:
-            await member.remove_roles(
-                *roles_to_remove,
-                reason="Citizenship changed",
-            )
-        if roles_to_add:
-            await member.add_roles(
-                *roles_to_add,
-                reason="Citizenship changed",
-            )
 
     root_group = app_commands.Group(
         name="registration",
@@ -200,7 +150,7 @@ class RegistrationCog(commands.Cog):
         self, interaction: discord.Interaction, channel: discord.ForumChannel
     ):
         async with processing_response(interaction, ephemeral=False):
-            await self.bot.db.key_values.set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
+            await self.key_values.set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
             await interaction.edit_original_response(
                 content=(
                     "Successfully updated the registration channel. Future registrations will now "
@@ -222,11 +172,11 @@ class RegistrationCog(commands.Cog):
         channel: discord.TextChannel,
     ):
         async with processing_response(interaction, ephemeral=False):
-            await self.bot.db.key_values.set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
-            await self.bot.db.key_values.set(
+            await self.key_values.set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
+            await self.key_values.set(
                 key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group
             )
-            await self.bot.db.key_values.set_int(
+            await self.key_values.set_int(
                 key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id
             )
             await self._set_snitch_regex()
@@ -264,10 +214,10 @@ class RegistrationCog(commands.Cog):
 
             for key, role in roles.items():
                 if role is None:
-                    await self.bot.db.key_values.delete(key)
+                    await self.key_values.delete(key)
                     continue
 
-                await self.bot.db.key_values.set_int(key=key, value=role.id)
+                await self.key_values.set_int(key=key, value=role.id)
 
             await interaction.edit_original_response(
                 content=(
@@ -300,9 +250,7 @@ class RegistrationCog(commands.Cog):
         match = self.snitch_regex.search(message.content)
         if match:
             ign = match.group(1)
-            registration = await self.service.hit_registration_snitch(ign)
-            if registration is not None:
-                await self.update_registration_message(registration)
+            await self.service.hit_registration_snitch(ign)
 
 
 async def setup(bot: commands.Bot):

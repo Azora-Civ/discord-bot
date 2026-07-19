@@ -1,3 +1,4 @@
+import logging
 import re
 
 import discord
@@ -11,11 +12,13 @@ from helpers.general import processing_response
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
 from models.ShownException import BadRequestException, BadStateException, NotFoundException
+from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.modals.namelayer_import_modal import NameLayerImportModal
 from ui.panels.permission_commands_panel import permission_command_embeds
 from ui.panels.permission_list import permission_list_members, permission_list_namelayers
 
 REGEX = re.compile(r"^Running command `(.+?)` as .+$")
+log = logging.getLogger(__name__)
 
 
 class PermissionsCog(commands.Cog):

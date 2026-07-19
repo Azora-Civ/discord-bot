@@ -1,8 +1,10 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from models.citizen import Citizen, Citizenship
 from models.ShownException import BadRequestException, NotFoundException
+from services.events import CitizenChangedEvent, CitizenChangeKind, EventHook
 
 if TYPE_CHECKING:
     from database import Database
@@ -10,10 +12,27 @@ if TYPE_CHECKING:
 class CitizenService:
     def __init__(self, db: "Database"):
         self.db = db
+        self.on_citizen_changed = EventHook[CitizenChangedEvent]("on_citizen_changed")
 
     @property
     def repo(self):
         return self.db.citizens
+
+    async def create_citizen(
+        self,
+        citizen: Citizen,
+        *,
+        source: str | None = None,
+    ) -> Citizen:
+        citizen.id = await self.repo.create(citizen)
+        await self.on_citizen_changed.emit(
+            CitizenChangedEvent(
+                kind=CitizenChangeKind.CREATED,
+                citizen=citizen,
+                source=source,
+            )
+        )
+        return citizen
 
     async def list_citizens(self, ign: str | None = None) -> list[Citizen]:
         citizens = await self.repo.fetch_all()
@@ -72,15 +91,33 @@ class CitizenService:
             if user_conflict is not None and user_conflict.id != citizen.id:
                 raise BadRequestException("That Discord user already belongs to another citizen.")
 
+        previous = replace(citizen)
+
         citizen.in_game_name = in_game_name
         citizen.user_id = user_id
         citizen.citizenship = citizenship
         await self.repo.update(citizen)
+        await self.on_citizen_changed.emit(
+            CitizenChangedEvent(
+                kind=CitizenChangeKind.UPDATED,
+                citizen=citizen,
+                previous=previous,
+                source="citizen_updated",
+            )
+        )
         return citizen
 
     async def remove_citizen(self, citizen_id: int) -> Citizen:
         citizen = await self.get_citizen(citizen_id=citizen_id)
         await self.repo.delete(citizen_id)
+        await self.on_citizen_changed.emit(
+            CitizenChangedEvent(
+                kind=CitizenChangeKind.DELETED,
+                citizen=citizen,
+                previous=citizen,
+                source="citizen_removed",
+            )
+        )
         return citizen
 
     async def hit_snitch(self, ign: str) -> Citizen | None:
@@ -90,6 +127,13 @@ class CitizenService:
 
         citizen.last_online = datetime.now(UTC)
         await self.repo.update(citizen)
+        await self.on_citizen_changed.emit(
+            CitizenChangedEvent(
+                kind=CitizenChangeKind.ACTIVITY,
+                citizen=citizen,
+                source="snitch_hit",
+            )
+        )
         return citizen
 
     async def stats(self, active_days: int = 14) -> tuple[int, int]:

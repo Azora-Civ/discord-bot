@@ -1,3 +1,4 @@
+import logging
 import re
 
 import discord
@@ -5,11 +6,15 @@ from discord import Member, app_commands
 from discord.ext import commands
 
 import config as cfg
+from helpers.discord import get_member
 from helpers.general import processing_response
+from models.citizen import Citizen, Citizenship
 from models.ShownException import NotFoundException
+from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.panels.citizens_panel import citizen_list_panel, citizen_panel, citizen_stats_panel
 from ui.views.citizen_management_view import CitizenManagementView
 
+log = logging.getLogger(__name__)
 SNITCH_HIT_REGEX = re.compile(r"`\[[^\]]+\]`\s+\*\*(.+?)\*\*\s+is at\s+.+")
 
 
@@ -25,8 +30,83 @@ class CitizensCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.service = bot.citizen_service
+        self.service.on_citizen_changed.subscribe(self.handle_citizen_changed)
         self.snitch_cache = False
         self.snitch_channel: int | None = None
+
+    async def handle_citizen_changed(self, event: CitizenChangedEvent) -> None:
+        if event.kind == CitizenChangeKind.ACTIVITY:
+            return
+
+        if event.previous and event.previous.user_id != event.citizen.user_id:
+            await self._sync_citizen_member(event.previous.user_id, None)
+
+        citizen = None if event.kind == CitizenChangeKind.DELETED else event.citizen
+        await self._sync_citizen_member(event.citizen.user_id, citizen)
+
+    async def _sync_citizen_member(
+        self,
+        user_id: int | None,
+        citizen: Citizen | None,
+    ) -> None:
+        if user_id is None:
+            return
+
+        member = await get_member(self.bot, user_id)
+        if member is None:
+            return
+
+        if citizen is not None:
+            try:
+                await member.edit(nick=citizen.in_game_name)
+            except discord.DiscordException:
+                log.exception("Failed to edit nickname after citizen change: %s", citizen.id)
+
+        try:
+            await self._sync_citizenship_roles(member, citizen.citizenship if citizen else None)
+        except discord.DiscordException:
+            log.exception("Failed to update roles after citizen change: %s", user_id)
+
+    async def _sync_citizenship_roles(
+        self,
+        member: Member,
+        citizenship: Citizenship | None,
+    ) -> None:
+        role_ids = {
+            Citizenship.RESIDENT: await self.bot.db.key_values.get_int(cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY),
+            Citizenship.CITIZEN: await self.bot.db.key_values.get_int(cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY),
+            "member": await self.bot.db.key_values.get_int(cfg.REGISTRATION_MEMBER_ROLE_ID_KEY),
+        }
+
+        managed_role_ids = {role_id for role_id in role_ids.values() if role_id is not None}
+        desired_role_ids = set()
+        if citizenship is not None:
+            desired_role_ids = {
+                role_ids["member"],
+                role_ids.get(citizenship),
+            } - {None}
+
+        roles_to_add = [
+            role
+            for role_id in desired_role_ids
+            if (role := member.guild.get_role(role_id)) is not None and role not in member.roles
+        ]
+        roles_to_remove = [
+            role
+            for role in member.roles
+            if role.id in managed_role_ids and role.id not in desired_role_ids
+        ]
+
+        if roles_to_remove:
+            await member.remove_roles(
+                *roles_to_remove,
+                reason="Citizenship changed",
+            )
+        if roles_to_add:
+            await member.add_roles(
+                *roles_to_add,
+                reason="Citizenship changed",
+            )
 
     root_group = app_commands.Group(
         name="citizens",
