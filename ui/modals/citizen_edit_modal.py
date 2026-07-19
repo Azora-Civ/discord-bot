@@ -58,10 +58,9 @@ class CitizenEditModal(discord.ui.Modal, title="Edit citizen"):
         self.add_item(self.citizenship)
 
     async def on_submit(self, interaction: discord.Interaction):
-        from services.citizen_service import CitizenService
         from ui.views.citizen_management_view import CitizenManagementView
 
-        service: CitizenService = interaction.client.get_cog("CitizensCog").service
+        service = interaction.client.citizen_service
         citizen = await service.update_citizen(
             self.citizen,
             in_game_name=str(self.in_game_name.value),

@@ -59,9 +59,7 @@ class CitizenRemoveConfirmView(discord.ui.View):
         if not await _is_mod(interaction):
             return
 
-        from services.citizen_service import CitizenService
-
-        service: CitizenService = interaction.client.get_cog("CitizensCog").service
+        service = interaction.client.citizen_service
         await service.remove_citizen(self.citizen.id)
         await interaction.response.edit_message(
             content=f"Removed citizen `{self.citizen.in_game_name}`.",

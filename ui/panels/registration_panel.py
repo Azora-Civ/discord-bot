@@ -2,12 +2,11 @@ import json
 
 import config as cfg
 from models.embed_config import EmbedConfig
-from repositories.key_values import KeyValueRepository
 from ui.views.registration_view import RegistrationView
 
 
-async def get_embed_config():
-    embed_config_json = await KeyValueRepository().get(key=cfg.REGISTRATION_EMBED_KEY)
+async def get_embed_config(db):
+    embed_config_json = await db.key_values.get(key=cfg.REGISTRATION_EMBED_KEY)
 
     if embed_config_json:
         embed_config = EmbedConfig(**json.loads(embed_config_json))
@@ -19,8 +18,8 @@ async def get_embed_config():
         )
     return embed_config
 
-async def registration_panel():
-    embed_config = await get_embed_config()
+async def registration_panel(db):
+    embed_config = await get_embed_config(db)
     embed = embed_config.create_embed()
 
     return {

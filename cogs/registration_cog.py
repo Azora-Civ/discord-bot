@@ -1,42 +1,169 @@
+import logging
 import re
 
 import discord
-from discord import app_commands
+from discord import Member, app_commands
 from discord.ext import commands
 
 import config as cfg
+from helpers.discord import get_member, get_message
 from helpers.general import processing_response
-from repositories.key_values import KeyValueRepository
-from services.registration_service import RegistrationService
+from models.citizen import Citizen, Citizenship
+from models.registration import Registration, RegistrationStatus
+from models.ShownException import BadStateException
 from ui.modals.registration_duchy_modal import registration_duchy_modal
 from ui.modals.registration_embed_modal import RegistrationEmbedModal
+from ui.panels.application_panel import registration_panel as application_panel
 from ui.panels.registration_panel import get_embed_config, registration_panel
+from ui.views.registration_force_accept import RegistrationForceAcceptView
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
+
+log = logging.getLogger(__name__)
 
 
 class RegistrationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.service = RegistrationService(bot)
+        self.service = bot.registration_service
         self.snitch_cache = False
+        self.snitch_channel: int | None = None
+        self.snitch_regex: re.Pattern[str] | None = None
 
     async def _set_snitch_regex(self):
         self.snitch_cache = True
 
-        self.snitch_channel = await KeyValueRepository().get_int(
+        self.snitch_channel = await self.bot.db.key_values.get_int(
             key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY
         )
 
-        snitch = await KeyValueRepository().get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
-        snitch_group = await KeyValueRepository().get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
+        snitch = await self.bot.db.key_values.get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
+        snitch_group = await self.bot.db.key_values.get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
+
+        if not snitch or not snitch_group:
+            self.snitch_regex = None
+            return
+
         self.snitch_regex = re.compile(
             rf"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}"
         )
 
+    async def submit_citizen_application(self, registration: Registration):
+        await self.service.submit_citizen_application(registration)
+        await self.update_registration_message(registration)
+
+    async def reject_registration(self, registration: Registration):
+        await self.service.reject_registration(registration)
+        await self.update_registration_message(registration)
+
+    async def accept_registration(
+        self,
+        registration: Registration,
+        force: bool,
+    ):
+        if not registration.data.snitch_hit and not force:
+            raise BadStateException(
+                content=(
+                    "Snitch has not yet been hit for this person! Therefore, the in-game "
+                    f"'{registration.in_game_name}' is unconfirmed."
+                ),
+                view=RegistrationForceAcceptView(),
+            )
+
+        citizen = await self.service.accept_registration(registration, force)
+        await self.update_registration_message(registration)
+
+        if citizen is not None:
+            await self._sync_accepted_member(registration, citizen)
+
+    async def update_registration_message(self, registration: Registration):
+        forum_id = await self.bot.db.key_values.get_int(cfg.REGISTRATION_FORUM_ID_KEY)
+        if forum_id is None:
+            raise BadStateException("Registration forum is not configured.")
+
+        channel = self.bot.get_channel(forum_id) or await self.bot.fetch_channel(forum_id)
+
+        if not isinstance(channel, discord.ForumChannel):
+            raise BadStateException("Configured registration channel is not a forum channel.")
+
+        msg = await application_panel(self.bot, self.bot.db, registration)
+
+        if not registration.data.thread_id or not registration.data.message_id:
+            thread_with_message = await channel.create_thread(**msg)
+            registration.data.thread_id = thread_with_message.thread.id
+            registration.data.message_id = thread_with_message.message.id
+
+            if registration.status == RegistrationStatus.PENDING:
+                await self.service.save_registration(registration)
+            return
+
+        message = await get_message(
+            self.bot,
+            registration.data.thread_id,
+            registration.data.message_id,
+        )
+
+        if message is None:
+            return
+
+        await message.edit(**msg)
+
+    async def _sync_accepted_member(self, registration: Registration, citizen: Citizen):
+        if citizen.user_id is None:
+            return
+
+        member = await get_member(self.bot, citizen.user_id)
+        if member is None:
+            return
+
+        try:
+            await member.edit(nick=registration.in_game_name)
+        except discord.DiscordException:
+            log.exception("Failed to edit nickname after registration acceptance")
+
+        try:
+            await self._sync_registration_roles(member, citizen.citizenship)
+        except discord.DiscordException:
+            log.exception("Failed to update roles after registration acceptance")
+
+    async def _sync_registration_roles(self, member: Member, citizenship: Citizenship):
+        role_ids = {
+            Citizenship.RESIDENT: await self.bot.db.key_values.get_int(cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY),
+            Citizenship.CITIZEN: await self.bot.db.key_values.get_int(cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY),
+            "member": await self.bot.db.key_values.get_int(cfg.REGISTRATION_MEMBER_ROLE_ID_KEY),
+        }
+
+        managed_role_ids = {role_id for role_id in role_ids.values() if role_id is not None}
+        desired_role_ids = {
+            role_ids["member"],
+            role_ids.get(citizenship),
+        } - {None}
+
+        roles_to_add = [
+            role
+            for role_id in desired_role_ids
+            if (role := member.guild.get_role(role_id)) is not None and role not in member.roles
+        ]
+        roles_to_remove = [
+            role
+            for role in member.roles
+            if role.id in managed_role_ids and role.id not in desired_role_ids
+        ]
+
+        if roles_to_remove:
+            await member.remove_roles(
+                *roles_to_remove,
+                reason="Citizenship changed",
+            )
+        if roles_to_add:
+            await member.add_roles(
+                *roles_to_add,
+                reason="Citizenship changed",
+            )
+
     root_group = app_commands.Group(
         name="registration",
-        description="Collection of commands used to configure citizen registration."
+        description="Collection of commands used to configure citizen registration.",
     )
 
     @root_group.command(
@@ -46,12 +173,11 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def edit_panel(self, interaction: discord.Interaction):
-        embed_config = await get_embed_config()
+        embed_config = await get_embed_config(self.bot.db)
 
         await interaction.response.send_modal(
-            RegistrationEmbedModal(embed_config)
+            RegistrationEmbedModal(self.bot.db, embed_config)
         )
-
 
     @root_group.command(
         name="panel", description="[ADMIN] Setup the registration panel here."
@@ -60,10 +186,9 @@ class RegistrationCog(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def panel(self, interaction: discord.Interaction):
         async with processing_response(interaction):
-            panel = await registration_panel()
+            panel = await registration_panel(self.bot.db)
             await interaction.channel.send(**panel)
             await interaction.edit_original_response(content="Registration panel posted.")
-
 
     @root_group.command(
         name="set-channel",
@@ -75,14 +200,13 @@ class RegistrationCog(commands.Cog):
         self, interaction: discord.Interaction, channel: discord.ForumChannel
     ):
         async with processing_response(interaction, ephemeral=False):
-            await KeyValueRepository().set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
+            await self.bot.db.key_values.set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
             await interaction.edit_original_response(
                 content=(
                     "Successfully updated the registration channel. Future registrations will now "
                     f"be made under: {channel.mention}"
                 )
             )
-
 
     @root_group.command(
         name="set-snitch",
@@ -98,11 +222,11 @@ class RegistrationCog(commands.Cog):
         channel: discord.TextChannel,
     ):
         async with processing_response(interaction, ephemeral=False):
-            await KeyValueRepository().set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
-            await KeyValueRepository().set(
+            await self.bot.db.key_values.set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
+            await self.bot.db.key_values.set(
                 key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group
             )
-            await KeyValueRepository().set_int(
+            await self.bot.db.key_values.set_int(
                 key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id
             )
             await self._set_snitch_regex()
@@ -112,7 +236,6 @@ class RegistrationCog(commands.Cog):
                     f"of '{snitch}' on '{snitch_group}' in {channel.mention}."
                 )
             )
-
 
     @root_group.command(
         name="set-roles",
@@ -139,13 +262,12 @@ class RegistrationCog(commands.Cog):
                 cfg.REGISTRATION_MEMBER_ROLE_ID_KEY: member_role,
             }
 
-            repo = KeyValueRepository()
             for key, role in roles.items():
                 if role is None:
-                    await repo.delete(key)
+                    await self.bot.db.key_values.delete(key)
                     continue
 
-                await repo.set_int(key=key, value=role.id)
+                await self.bot.db.key_values.set_int(key=key, value=role.id)
 
             await interaction.edit_original_response(
                 content=(
@@ -164,22 +286,24 @@ class RegistrationCog(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def set_duchies(self, interaction: discord.Interaction):
         await interaction.response.send_modal(
-            await registration_duchy_modal()
+            await registration_duchy_modal(self.bot.db)
         )
-
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if not self.snitch_cache:
             await self._set_snitch_regex()
 
-        if self.snitch_channel != message.channel.id:
+        if self.snitch_channel != message.channel.id or self.snitch_regex is None:
             return
 
         match = self.snitch_regex.search(message.content)
         if match:
             ign = match.group(1)
-            await self.service.hit_registration_snitch(ign)
+            registration = await self.service.hit_registration_snitch(ign)
+            if registration is not None:
+                await self.update_registration_message(registration)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)

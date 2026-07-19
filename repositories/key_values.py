@@ -1,20 +1,25 @@
-from helpers.general import connect
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from database import Database
 
 
 class KeyValueRepository:
+    def __init__(self, db: "Database") -> None:
+        self.db = db
+
     async def create_table(self) -> None:
-        async with connect() as db:
-            await db.execute("""
+        async with self.db.transaction() as conn:
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS key_values (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 )
             """)
-            await db.commit()
 
     async def get(self, key: str) -> str | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT value
                 FROM key_values
@@ -31,8 +36,8 @@ class KeyValueRepository:
             return row["value"]
 
     async def set(self, key: str, value: str) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 INSERT INTO key_values (key, value)
                 VALUES (?, ?)
@@ -41,18 +46,16 @@ class KeyValueRepository:
                 """,
                 (key, value),
             )
-            await db.commit()
 
     async def delete(self, key: str) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 DELETE FROM key_values
                 WHERE key = ?
                 """,
                 (key,),
             )
-            await db.commit()
 
     async def exists(self, key: str) -> bool:
         value = await self.get(key)

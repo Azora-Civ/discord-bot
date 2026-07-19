@@ -5,7 +5,6 @@ import discord
 
 import config as cfg
 from models.embed_config import EmbedConfig
-from repositories.key_values import KeyValueRepository
 
 
 class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
@@ -40,10 +39,12 @@ class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
 
     def __init__(
         self,
+        db,
         config: EmbedConfig
     ):
         super().__init__()
 
+        self.db = db
         self.config = config
 
         self.embed_title.default = config.title
@@ -76,7 +77,7 @@ class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
             image_url=image_url,
         )
 
-        await KeyValueRepository().set(key=cfg.REGISTRATION_EMBED_KEY, value=json.dumps(asdict(config)))
+        await self.db.key_values.set(key=cfg.REGISTRATION_EMBED_KEY, value=json.dumps(asdict(config)))
 
         await interaction.response.send_message(
             "Registration embed updated. New panels will use this instead.",

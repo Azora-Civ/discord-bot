@@ -1,12 +1,19 @@
-from helpers.general import connect
+from typing import TYPE_CHECKING
+
 from models.permission import PermissionLevel
 from models.permission_group import GroupPermission
 
+if TYPE_CHECKING:
+    from database import Database
+
 
 class GroupPermissionsRepository:
+    def __init__(self, db: "Database") -> None:
+        self.db = db
+
     async def create_table(self) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS group_permissions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,11 +25,10 @@ class GroupPermissionsRepository:
                 )
                 """
             )
-            await db.commit()
 
     async def create(self, permission: GroupPermission) -> int:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 INSERT INTO group_permissions (role_id, namelayer, level)
                 VALUES (?, ?, ?)
@@ -33,15 +39,14 @@ class GroupPermissionsRepository:
                     permission.level.name,
                 ),
             )
-            await db.commit()
             return cursor.lastrowid
 
     async def update(self, permission: GroupPermission) -> None:
         if permission.id is None:
             raise ValueError("Cannot update group permission without id")
 
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 UPDATE group_permissions
                 SET role_id = ?, namelayer = ?, level = ?
@@ -54,19 +59,17 @@ class GroupPermissionsRepository:
                     permission.id,
                 ),
             )
-            await db.commit()
 
     async def delete(self, permission_id: int) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 "DELETE FROM group_permissions WHERE id = ?",
                 (permission_id,),
             )
-            await db.commit()
 
     async def fetch_all(self) -> list[GroupPermission]:
-        async with connect() as db:
-            cursor = await db.execute("SELECT * FROM group_permissions")
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute("SELECT * FROM group_permissions")
             rows = await cursor.fetchall()
             return [self._from_row(row) for row in rows]
 
@@ -75,8 +78,8 @@ class GroupPermissionsRepository:
         role_id: int,
         namelayer: str,
     ) -> GroupPermission | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT * FROM group_permissions
                 WHERE role_id = ? AND namelayer = ?
@@ -87,8 +90,8 @@ class GroupPermissionsRepository:
             return self._from_row(row) if row else None
 
     async def correct_namelayer(self, namelayer: str) -> str | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT * FROM group_permissions
                 WHERE namelayer = ?

@@ -6,13 +6,13 @@ from discord import Client
 from config import CITIZEN_MOD_ROLE_ID_KEY
 from helpers.discord import get_member
 from models.registration import Registration, RegistrationStatus
-from repositories.key_values import KeyValueRepository
 from texts import CITIZEN_APPLICATION_MODAL_OTHER, CITIZEN_APPLICATION_MODAL_SELF
 from ui.views.registration_response_view import RegistrationResponseView
 
 
 async def registration_panel(
     bot: Client,
+    db,
     registration: Registration
 ) -> dict[str, object]:
     status = {
@@ -94,7 +94,7 @@ async def registration_panel(
 
     response: dict[str, object] = {
         "embed": embed,
-        "content": await mentions(registration),
+        "content": await mentions(db, registration),
         "view": RegistrationResponseView() if registration.status == RegistrationStatus.PENDING else None
     }
 
@@ -121,7 +121,7 @@ def format_duchy(registration: Registration) -> str:
 
     return result
 
-async def mentions(registration: Registration):
-    admin_role = await KeyValueRepository().get_int(key=CITIZEN_MOD_ROLE_ID_KEY)
+async def mentions(db, registration: Registration):
+    admin_role = await db.key_values.get_int(key=CITIZEN_MOD_ROLE_ID_KEY)
     admin_mention = f"<@&{admin_role}>" if admin_role else ""
     return f"<@{registration.poster_id}> {admin_mention} {registration.data.duchy_mention}"

@@ -1,43 +1,37 @@
-import discord.ext.commands as commands
+from typing import TYPE_CHECKING
 
-from helpers.discord import get_guild_roles, get_member
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
-from repositories.citizens import CitizenRepository
-from repositories.group_permissions import GroupPermissionsRepository
-from repositories.permission_exceptions import PermissionExceptionsRepository
-from repositories.permissions import PermissionsRepository
+
+if TYPE_CHECKING:
+    from database import Database
 
 
 class PermissionService:
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+    def __init__(self, db: "Database"):
+        self.db = db
 
     async def update_actual_user_permission(self, permission: Permission):
-        p_repo = PermissionsRepository()
-        old = await p_repo.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        await _compare_and_update(old, permission, p_repo)
+        old = await self.db.permissions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
+        await _compare_and_update(old, permission, self.db.permissions)
 
     async def update_user_permission(self, permission: Permission):
-        pe_repo = PermissionExceptionsRepository()
-        old = await pe_repo.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        await _compare_and_update(old, permission, pe_repo)
+        old = await self.db.permission_exceptions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
+        await _compare_and_update(old, permission, self.db.permission_exceptions)
 
     async def update_group_permission(self, permission: GroupPermission):
-        gp_repo = GroupPermissionsRepository()
-        old = await gp_repo.find_by_role_id_and_namelayer(permission.role_id, permission.namelayer)
-        await _compare_and_update(old, permission, gp_repo)
+        old = await self.db.group_permissions.find_by_role_id_and_namelayer(
+            permission.role_id,
+            permission.namelayer,
+        )
+        await _compare_and_update(old, permission, self.db.group_permissions)
 
-    async def get_user_permissions(self, user_ign: str) -> list[Permission]:
-        people_repo = CitizenRepository()
-        gp_repo = GroupPermissionsRepository()
-        pe_repo = PermissionExceptionsRepository()
-
-        person = await people_repo.fetch_by_ign(user_ign)
-        member = await get_member(self.bot, person.user_id) if person and person.user_id else None
-        roles = member.roles if member is not None else []
-
-        role_by_id = {role.id: role for role in roles}
+    async def get_user_permissions(
+        self,
+        user_ign: str,
+        role_sources_by_id: dict[int, str] | None = None,
+    ) -> list[Permission]:
+        role_sources_by_id = role_sources_by_id or {}
         perm_map: dict[str, Permission] = {}
 
         def add_permission(permission: Permission) -> None:
@@ -46,9 +40,9 @@ class PermissionService:
             if current is None or permission.level.value > current.level.value:
                 perm_map[permission.namelayer] = permission
 
-        for gp in await gp_repo.fetch_all():
-            role = role_by_id.get(gp.role_id)
-            if role is None:
+        for gp in await self.db.group_permissions.fetch_all():
+            source = role_sources_by_id.get(gp.role_id)
+            if source is None:
                 continue
 
             add_permission(
@@ -56,11 +50,11 @@ class PermissionService:
                     ign=user_ign,
                     namelayer=gp.namelayer,
                     level=gp.level,
-                    source=role.mention,
+                    source=source,
                 )
             )
 
-        for exception in await pe_repo.fetch_by_ign(user_ign):
+        for exception in await self.db.permission_exceptions.fetch_by_ign(user_ign):
             add_permission(
                 Permission(
                     ign=user_ign,
@@ -72,25 +66,19 @@ class PermissionService:
 
         return list(perm_map.values())
 
-    async def get_namelayer_members(self, namelayer: str) -> list[Permission]:
-        people_repo = CitizenRepository()
-        gp_repo = GroupPermissionsRepository()
-        pe_repo = PermissionExceptionsRepository()
-
+    async def get_namelayer_members(
+        self,
+        namelayer: str,
+        role_member_igns_by_id: dict[int, list[str]] | None = None,
+        role_sources_by_id: dict[int, str] | None = None,
+    ) -> list[Permission]:
+        role_member_igns_by_id = role_member_igns_by_id or {}
+        role_sources_by_id = role_sources_by_id or {}
         group_permissions = [
             gp
-            for gp in await gp_repo.fetch_all()
+            for gp in await self.db.group_permissions.fetch_all()
             if gp.namelayer == namelayer
         ]
-
-        people = await people_repo.fetch_all()
-        ign_by_user_id = {
-            person.user_id: person.in_game_name
-            for person in people
-        }
-
-        roles = await get_guild_roles(self.bot, list(ign_by_user_id.keys()))
-        role_by_id = {role.id: role for role in roles}
 
         perm_map: dict[str, Permission] = {}
 
@@ -101,25 +89,21 @@ class PermissionService:
                 perm_map[permission.ign] = permission
 
         for gp in group_permissions:
-            role = role_by_id.get(gp.role_id)
-            if role is None:
+            source = role_sources_by_id.get(gp.role_id)
+            if source is None:
                 continue
 
-            for member in role.members:
-                ign = ign_by_user_id.get(member.id)
-                if ign is None:
-                    continue
-
+            for ign in role_member_igns_by_id.get(gp.role_id, []):
                 add_permission(
                     Permission(
                         ign=ign,
                         namelayer=namelayer,
                         level=gp.level,
-                        source=role.mention,
+                        source=source,
                     )
                 )
 
-        for exception in await pe_repo.fetch_by_namelayer(namelayer):
+        for exception in await self.db.permission_exceptions.fetch_by_namelayer(namelayer):
             add_permission(
                 Permission(
                     ign=exception.ign,
@@ -131,29 +115,42 @@ class PermissionService:
 
         return list(perm_map.values())
 
-    async def get_user_permission_commands(self, user_ign: str) -> list[str]:
-        target_perms: list[Permission] = await self.get_user_permissions(user_ign)
-        actual_perms: list[Permission] = await PermissionsRepository().fetch_by_ign(user_ign)
+    async def get_user_permission_commands(
+        self,
+        user_ign: str,
+        role_sources_by_id: dict[int, str] | None = None,
+    ) -> list[str]:
+        target_perms = await self.get_user_permissions(user_ign, role_sources_by_id)
+        actual_perms = await self.db.permissions.fetch_by_ign(user_ign)
 
         target_by_nl = {p.namelayer: p for p in target_perms}
         actual_by_nl = {p.namelayer: p for p in actual_perms}
 
         return await _to_commands(target_by_nl, actual_by_nl)
 
-    async def get_namelayer_member_commands(self, namelayer: str) -> list[str]:
-        target_perms: list[Permission] = await self.get_namelayer_members(namelayer)
-        actual_perms: list[Permission] = await PermissionsRepository().fetch_by_namelayer(namelayer)
+    async def get_namelayer_member_commands(
+        self,
+        namelayer: str,
+        role_member_igns_by_id: dict[int, list[str]] | None = None,
+        role_sources_by_id: dict[int, str] | None = None,
+    ) -> list[str]:
+        target_perms = await self.get_namelayer_members(
+            namelayer,
+            role_member_igns_by_id,
+            role_sources_by_id,
+        )
+        actual_perms = await self.db.permissions.fetch_by_namelayer(namelayer)
 
         target_by_ign = {p.ign: p for p in target_perms}
         actual_by_ign = {p.ign: p for p in actual_perms}
 
         return await _to_commands(target_by_ign, actual_by_ign)
 
-    async def import_permissions(self, entries):
-        namelayers: list[str] = list(set(e.namelayer for e in entries))
-        p_repo = PermissionsRepository()
-        await p_repo.delete_by_namelayers(namelayers)
-        await p_repo.batch_create(entries)
+    async def import_permissions(self, entries: list[Permission]):
+        namelayers = list({entry.namelayer for entry in entries})
+        await self.db.permissions.delete_by_namelayers(namelayers)
+        await self.db.permissions.batch_create(entries)
+
 
 async def _to_commands(targets: dict[str, Permission], actuals: dict[str, Permission]):
     commands: list[str] = []
@@ -172,6 +169,7 @@ async def _to_commands(targets: dict[str, Permission], actuals: dict[str, Permis
 
     return commands
 
+
 async def _to_command(
     perm: Permission, actual_level: PermissionLevel, target_level: PermissionLevel
 ) -> str | None:
@@ -186,15 +184,12 @@ async def _to_command(
     if target_level in owner_levels and actual_level in owner_levels:
         return None
 
-    # Should not be in namelayer, but currently is
     if target_level == PermissionLevel.DEFAULT:
         return f"/in-game command:nlrm {perm.namelayer} {perm.ign}"
 
-    # Should be in namelayer, but currently is not
     if actual_level == PermissionLevel.DEFAULT:
         return f"/in-game command:nlip {perm.namelayer} {perm.ign} {target_level.name}"
 
-    # Already in namelayer, but wrong level
     return f"/in-game command:nlpp {perm.namelayer} {perm.ign} {target_level.name}"
 
 

@@ -1,13 +1,19 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from helpers.general import connect
 from models.citizen import Citizen, Citizenship
+
+if TYPE_CHECKING:
+    from database import Database
 
 
 class CitizenRepository:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
     async def create_table(self) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS citizens (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,11 +25,10 @@ class CitizenRepository:
                 )
                 """
             )
-            await db.commit()
 
     async def create(self, citizen: Citizen) -> int:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 INSERT INTO citizens (
                     in_game_name,
@@ -42,15 +47,14 @@ class CitizenRepository:
                     citizen.last_online.isoformat(),
                 ),
             )
-            await db.commit()
             return int(cursor.lastrowid)
 
     async def update(self, citizen: Citizen) -> None:
         if citizen.id is None:
             raise ValueError("Cannot update citizen without id")
 
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 UPDATE citizens
                 SET
@@ -70,19 +74,17 @@ class CitizenRepository:
                     citizen.id,
                 ),
             )
-            await db.commit()
 
     async def delete(self, citizen_id: int) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 "DELETE FROM citizens WHERE id = ?",
                 (citizen_id,),
             )
-            await db.commit()
 
     async def fetch_by_id(self, citizen_id: int) -> Citizen | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM citizens
@@ -94,8 +96,8 @@ class CitizenRepository:
             return self._from_row(row) if row else None
 
     async def fetch_by_user_id(self, user_id: int) -> Citizen | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM citizens
@@ -107,8 +109,8 @@ class CitizenRepository:
             return self._from_row(row) if row else None
 
     async def fetch_by_ign(self, ign: str) -> Citizen | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM citizens
@@ -120,8 +122,8 @@ class CitizenRepository:
             return self._from_row(row) if row else None
 
     async def fetch_all(self) -> list[Citizen]:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM citizens
