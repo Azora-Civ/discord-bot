@@ -41,9 +41,7 @@ class RegistrationCog(commands.Cog):
     async def _set_snitch_regex(self):
         self.snitch_cache = True
 
-        self.snitch_channel = await self.key_values.get_int(
-            key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY
-        )
+        self.snitch_channel = await self.key_values.get_int(key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY)
 
         snitch = await self.key_values.get(key=cfg.REGISTRATION_SNITCH_NAME_KEY)
         snitch_group = await self.key_values.get(key=cfg.REGISTRATION_SNITCH_GROUP_KEY)
@@ -52,9 +50,7 @@ class RegistrationCog(commands.Cog):
             self.snitch_regex = None
             return
 
-        self.snitch_regex = re.compile(
-            rf"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}"
-        )
+        self.snitch_regex = re.compile(rf"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}")
 
     async def submit_citizen_application(self, registration: Registration):
         await self.service.submit_citizen_application(registration)
@@ -129,13 +125,9 @@ class RegistrationCog(commands.Cog):
 
             embed_config = await get_embed_config(self.bot.db)
 
-            await interaction.response.send_modal(
-                RegistrationEmbedModal(self.bot.db, embed_config)
-            )
+            await interaction.response.send_modal(RegistrationEmbedModal(self.bot.db, embed_config))
 
-    @root_group.command(
-        name="panel", description="[ADMIN] Setup the registration panel here."
-    )
+    @root_group.command(name="panel", description="[ADMIN] Setup the registration panel here.")
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def panel(self, interaction: discord.Interaction):
@@ -153,9 +145,7 @@ class RegistrationCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
-    async def set_registration_channel(
-        self, interaction: discord.Interaction, channel: discord.ForumChannel
-    ):
+    async def set_registration_channel(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
                 return
@@ -186,12 +176,8 @@ class RegistrationCog(commands.Cog):
                 return
 
             await self.key_values.set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
-            await self.key_values.set(
-                key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group
-            )
-            await self.key_values.set_int(
-                key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id
-            )
+            await self.key_values.set(key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group)
+            await self.key_values.set_int(key=cfg.REGISTRATION_SNITCH_CHANNEL_ID_KEY, value=channel.id)
             await self._set_snitch_regex()
             await interaction.edit_original_response(
                 content=(
@@ -255,12 +241,13 @@ class RegistrationCog(commands.Cog):
             if not should_process:
                 return
 
-            await interaction.response.send_modal(
-                await registration_duchy_modal(self.bot.db)
-            )
+            await interaction.response.send_modal(await registration_duchy_modal(self.bot.db))
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        if message.author.id != cfg.KIRA_USER_ID:
+            return
+
         if not self.snitch_cache:
             await self._set_snitch_regex()
 

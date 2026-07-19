@@ -9,6 +9,7 @@ class RegistrationStatus(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
 
+
 @dataclass
 class RegistrationData:
     about: str = ""

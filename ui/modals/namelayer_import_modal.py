@@ -1,9 +1,12 @@
+import binascii
+import zlib
 
 import discord
 
 from helpers.encoding import deflate_text, inflate_text
 from helpers.general import respond
 from models.permission import Permission, PermissionLevel
+from models.ShownException import BadRequestException
 
 
 class NameLayerImportModal(
@@ -39,11 +42,16 @@ class NameLayerImportModal(
             macro_output = self.macro_input.value
             entries = parse_results(macro_output)
             await interaction.client.permission_service.import_permissions(entries)
+            await interaction.edit_original_response(content=f"Imported {len(entries)} permission entries.")
+
 
 def parse_results(text: str) -> list[Permission]:
     results = []
 
-    text = inflate_text(text)
+    try:
+        text = inflate_text(text)
+    except (binascii.Error, UnicodeDecodeError, ValueError, zlib.error) as exc:
+        raise BadRequestException("Import text is not valid compressed macro output.") from exc
 
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
@@ -52,15 +60,20 @@ def parse_results(text: str) -> list[Permission]:
         parts = line.split("\t")
 
         if len(parts) != 3:
-            raise ValueError(
-                f"Invalid result on line {line_number}: {line!r}"
-            )
+            raise BadRequestException(f"Invalid result on line {line_number}: {line!r}")
 
-        namelayer, name, membership = parts
-        results.append(Permission(
-            namelayer=namelayer,
-            ign=name,
-            level=PermissionLevel[membership.upper()],
-        ))
+        namelayer, name, membership = (part.strip() for part in parts)
+        try:
+            level = PermissionLevel[membership.upper()]
+        except KeyError as exc:
+            raise BadRequestException(f"Invalid membership on line {line_number}: {membership!r}") from exc
+
+        results.append(
+            Permission(
+                namelayer=namelayer,
+                ign=name,
+                level=level,
+            )
+        )
 
     return results

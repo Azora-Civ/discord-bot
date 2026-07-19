@@ -12,6 +12,7 @@ class CitizenManagementView(discord.ui.View):
 
     @discord.ui.button(
         label="Edit",
+        emoji="✏️",
         style=discord.ButtonStyle.primary,
     )
     async def edit_citizen(
@@ -30,6 +31,7 @@ class CitizenManagementView(discord.ui.View):
 
     @discord.ui.button(
         label="Remove",
+        emoji="🗑️",
         style=discord.ButtonStyle.danger,
     )
     async def remove_citizen(
@@ -58,6 +60,7 @@ class CitizenRemoveConfirmView(discord.ui.View):
 
     @discord.ui.button(
         label="Confirm Remove",
+        emoji="🗑️",
         style=discord.ButtonStyle.danger,
     )
     async def confirm(
@@ -82,6 +85,7 @@ class CitizenRemoveConfirmView(discord.ui.View):
 
     @discord.ui.button(
         label="Cancel",
+        emoji="↩️",
         style=discord.ButtonStyle.secondary,
     )
     async def cancel(

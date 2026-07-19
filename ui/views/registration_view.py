@@ -11,7 +11,8 @@ class RegistrationView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Apply for Citizenship",
+        label="Apply for Myself",
+        emoji="📝",
         style=discord.ButtonStyle.primary,
         custom_id="registration_view:register_citizen",
     )
@@ -40,6 +41,7 @@ class RegistrationView(discord.ui.View):
 
     @discord.ui.button(
         label="Apply for Someone Else",
+        emoji="👥",
         style=discord.ButtonStyle.secondary,
         custom_id="registration_view:register_citizen_other",
     )
@@ -54,9 +56,7 @@ class RegistrationView(discord.ui.View):
 
             citizen = await interaction.client.db.citizens.fetch_by_user_id(interaction.user.id)
             if citizen is None:
-                raise BadRequestException(
-                    "You can only apply for Citizenship for someone else if you are a citizen!"
-                )
+                raise BadRequestException("You can only apply for Citizenship for someone else if you are a citizen!")
 
             await interaction.response.send_modal(
                 await citizen_application_modal(

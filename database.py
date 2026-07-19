@@ -46,13 +46,13 @@ async def backup_db(path: str | Path):
         key=lambda p: p.stat().st_mtime,
     )
 
-    excess_count = len(backups) - int(DB_MAX_BACKUPS)
+    excess_count = len(backups) - DB_MAX_BACKUPS
 
     if excess_count > 0:
         log.info(
             "Removing %d old database backup(s); keeping newest %d",
             excess_count,
-            int(DB_MAX_BACKUPS),
+            DB_MAX_BACKUPS,
         )
 
     for old_backup in backups[:excess_count]:
@@ -78,7 +78,6 @@ class Database:
         self.permissions = PermissionsRepository(self)
         self.permission_exceptions = PermissionExceptionsRepository(self)
         self.group_permissions = GroupPermissionsRepository(self)
-
 
     async def connect(self) -> None:
         await backup_db(self.path)

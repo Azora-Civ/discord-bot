@@ -10,15 +10,11 @@ from texts import CITIZEN_APPLICATION_MODAL_OTHER, CITIZEN_APPLICATION_MODAL_SEL
 from ui.views.registration_response_view import RegistrationResponseView
 
 
-async def registration_panel(
-    bot: Client,
-    db,
-    registration: Registration
-) -> dict[str, object]:
+async def registration_panel(bot: Client, db, registration: Registration) -> dict[str, object]:
     status = {
         RegistrationStatus.ACCEPTED: "✅ Approved",
         RegistrationStatus.REJECTED: "❌ Rejected",
-        RegistrationStatus.PENDING: "⌛ Pending"
+        RegistrationStatus.PENDING: "⌛ Pending",
     }[registration.status]
     citizenship = str(registration.citizenship_type).title()
 
@@ -29,10 +25,7 @@ async def registration_panel(
     texts = CITIZEN_APPLICATION_MODAL_SELF if registration.is_for_self else CITIZEN_APPLICATION_MODAL_OTHER
 
     if registration.is_for_self:
-        applicant = (
-            f"**Minecraft Username:** `{registration.in_game_name}`\n"
-            f"**Discord:** <@{registration.poster_id}>"
-        )
+        applicant = f"**Minecraft Username:** `{registration.in_game_name}`\n**Discord:** <@{registration.poster_id}>"
 
         if member is not None:
             applicant += (
@@ -48,7 +41,7 @@ async def registration_panel(
         )
 
     embed = discord.Embed(
-        title="📋 Citizen Application",
+        title=f"{citizenship} Application",
         color=discord.Color.gold(),
     )
 
@@ -85,21 +78,22 @@ async def registration_panel(
 
     embed.add_field(
         name="Review",
-        value=(
-            f"**Application status:** {status}\n"
-            f"**Snitch verified:** {verified}"
-        ),
+        value=(f"**Application status:** {status}\n**Snitch verified:** {verified}"),
         inline=True,
     )
 
     response: dict[str, object] = {
         "embed": embed,
-        "content": await mentions(db, registration),
-        "view": RegistrationResponseView() if registration.status == RegistrationStatus.PENDING else None
+        "view": RegistrationResponseView() if registration.status == RegistrationStatus.PENDING else None,
     }
 
+    if registration.status == RegistrationStatus.PENDING:
+        response["content"] = await mentions(db, registration)
+    else:
+        response["content"] = None
+
     if registration.data.thread_id is None:
-        response["name"] = f"{citizenship} Application — {registration.in_game_name}"
+        response["name"] = f"{citizenship} Application - {registration.in_game_name}"
 
     return response
 
@@ -115,13 +109,22 @@ def format_duchy(registration: Registration) -> str:
     if registration.data.duchy_emoji:
         parts.append(registration.data.duchy_emoji)
 
-    parts.append(name.title())
+    parts.append(name)
 
     result = " ".join(parts)
 
     return result
 
+
 async def mentions(db, registration: Registration):
     admin_role = await db.key_values.get_int(key=CITIZEN_MOD_ROLE_ID_KEY)
     admin_mention = f"<@&{admin_role}>" if admin_role else ""
-    return f"<@{registration.poster_id}> {admin_mention} {registration.data.duchy_mention}"
+    return " ".join(
+        mention
+        for mention in (
+            f"<@{registration.poster_id}>",
+            admin_mention,
+            registration.data.duchy_mention,
+        )
+        if mention
+    )

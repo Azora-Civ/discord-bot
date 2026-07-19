@@ -23,17 +23,9 @@ async def role_context_for_namelayer(
     bot: commands.Bot,
     namelayer: str,
 ) -> tuple[dict[int, list[str]], dict[int, str]]:
-    group_permissions = [
-        gp
-        for gp in await bot.db.group_permissions.fetch_all()
-        if gp.namelayer == namelayer
-    ]
+    group_permissions = [gp for gp in await bot.db.group_permissions.fetch_all() if gp.namelayer == namelayer]
     people = await bot.db.citizens.fetch_all()
-    ign_by_user_id = {
-        person.user_id: person.in_game_name
-        for person in people
-        if person.user_id is not None
-    }
+    ign_by_user_id = {person.user_id: person.in_game_name for person in people if person.user_id is not None}
     if not ign_by_user_id:
         return {}, {}
 
@@ -53,8 +45,7 @@ async def role_context_for_namelayer(
         role_member_igns_by_id[role.id] = [
             ign_by_user_id[member.id]
             for member in members
-            if member.id in ign_by_user_id
-            and any(member_role.id == role.id for member_role in member.roles)
+            if member.id in ign_by_user_id and any(member_role.id == role.id for member_role in member.roles)
         ]
 
     return role_member_igns_by_id, role_sources_by_id

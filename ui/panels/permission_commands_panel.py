@@ -12,11 +12,9 @@ from ui.panels.paginated_panel import paginated_panel
 MAX_COMMAND_BLOCK_LENGTH = 3500
 MAX_COMMAND_PER_PAGE = 25
 
+
 async def permission_command_embeds(
-        client: Client,
-        namelayer: str | None = None,
-        ign: str | None = None,
-        user: Member | None = None
+    client: Client, namelayer: str | None = None, ign: str | None = None, user: Member | None = None
 ) -> dict[str, object]:
     if namelayer is not None:
         namelayer = await corrected_namelayer(client, namelayer)
@@ -74,17 +72,19 @@ def _chunk_commands(commands: list[str]) -> list[list[str]]:
     current_count = 0
 
     for command in commands:
-        current_length += len(command) + 11
-        current_count += 1
+        command_length = len(command) + 1
 
-        if current_chunk and (current_length > MAX_COMMAND_BLOCK_LENGTH or current_count > MAX_COMMAND_PER_PAGE):
+        if current_chunk and (
+            current_length + command_length > MAX_COMMAND_BLOCK_LENGTH or current_count + 1 > MAX_COMMAND_PER_PAGE
+        ):
             chunks.append(current_chunk)
             current_chunk = []
             current_length = 0
             current_count = 0
 
         current_chunk.append(command)
-
+        current_length += command_length
+        current_count += 1
 
     if current_chunk:
         chunks.append(current_chunk)

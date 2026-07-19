@@ -20,5 +20,5 @@ CITIZEN_APPLICATION_MODAL_OTHER = CitizenApplicationModalTexts(
     about_label="What would they like to do in Azora?",
     duchy_label="Which duchy or city do they want to join?",
     ack_law_label="They will follow Azora's laws",
-    ack_level_label="They understand they start at level 1"
+    ack_level_label="They understand they start at level 1",
 )

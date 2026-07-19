@@ -5,7 +5,7 @@ from helpers.general import respond
 from models.citizen import Citizenship
 from models.duchy import Duchy
 from models.registration import Registration
-from models.ShownException import BadRequestException
+from models.ShownException import BadRequestException, BadStateException
 from texts import (
     CITIZEN_APPLICATION_MODAL_OTHER,
     CITIZEN_APPLICATION_MODAL_SELF,
@@ -17,6 +17,11 @@ from ui.modals.registration_duchy_modal import get_duchies
 
 async def citizen_application_modal(db, registration: Registration):
     duchies = await get_duchies(db)
+    if not duchies:
+        raise BadStateException("Registration duchies/cities are not configured yet.")
+
+    if len(duchies) > 25:
+        raise BadStateException("Registration has too many duchies/cities configured.")
 
     return CitizenApplicationModal(
         duchies=duchies,
@@ -93,7 +98,7 @@ class CitizenApplicationModal(discord.ui.Modal, title=CITIZEN_APPLICATION_MODAL_
                 ],
                 min_values=2,
                 max_values=2,
-            )
+            ),
         )
 
         self.add_item(self.citizenship)
@@ -112,7 +117,10 @@ class CitizenApplicationModal(discord.ui.Modal, title=CITIZEN_APPLICATION_MODAL_
             if len(self.checks.component.values) != 2:
                 raise BadRequestException("You must accept both acknowledgements.")
 
-            duchy = {d.name: d for d in self.duchies}[self.duchy_select.values[0]]
+            selected_duchy = self.duchy_select.values[0]
+            duchy = next((duchy for duchy in self.duchies if duchy.name == selected_duchy), None)
+            if duchy is None:
+                raise BadRequestException("Selected duchy/city is no longer available.")
 
             registration.in_game_name = str(self.in_game_name.value).strip()
             registration.citizenship_type = Citizenship[self.citizenship_select.values[0]]

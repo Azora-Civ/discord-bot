@@ -12,6 +12,7 @@ class RegistrationResponseView(discord.ui.View):
 
     @discord.ui.button(
         label="Accept",
+        emoji="✅",
         style=discord.ButtonStyle.primary,
         custom_id="registration_response_view:accept_citizen",
     )
@@ -29,11 +30,14 @@ class RegistrationResponseView(discord.ui.View):
 
             registration = await _get_registration(interaction)
             cog = interaction.client.get_cog("RegistrationCog")
+            if cog is None:
+                raise BadStateException("Registration commands are not loaded.")
             await cog.accept_registration(registration, False)
 
     @discord.ui.button(
         label="Reject",
-        style=discord.ButtonStyle.primary,
+        emoji="❌",
+        style=discord.ButtonStyle.danger,
         custom_id="registration_response_view:reject_citizen",
     )
     async def reject_citizen(
@@ -50,10 +54,13 @@ class RegistrationResponseView(discord.ui.View):
 
             registration = await _get_registration(interaction)
             cog = interaction.client.get_cog("RegistrationCog")
+            if cog is None:
+                raise BadStateException("Registration commands are not loaded.")
             await cog.reject_registration(registration)
 
     @discord.ui.button(
         label="Edit",
+        emoji="✏️",
         style=discord.ButtonStyle.secondary,
         custom_id="registration_response_view:edit_citizen",
     )
@@ -63,15 +70,10 @@ class RegistrationResponseView(discord.ui.View):
                 return
 
             registration = await _get_registration(interaction)
-            if not (
-                registration.poster_id == interaction.user.id
-                or await _is_mod(interaction)
-            ):
+            if not (registration.poster_id == interaction.user.id or await _is_mod(interaction)):
                 raise BadStateException("You are not permitted to edit the registration.")
 
-            await interaction.response.send_modal(
-                await citizen_application_modal(interaction.client.db, registration)
-            )
+            await interaction.response.send_modal(await citizen_application_modal(interaction.client.db, registration))
 
 
 async def _get_registration(interaction: discord.Interaction):
@@ -81,8 +83,12 @@ async def _get_registration(interaction: discord.Interaction):
         raise BadStateException("Registration not found")
     return registration
 
+
 async def _is_mod(interaction: discord.Interaction):
     user = interaction.user
+    if not isinstance(user, discord.Member):
+        return False
+
     if user.guild_permissions.administrator:
         return True
 
@@ -90,4 +96,3 @@ async def _is_mod(interaction: discord.Interaction):
     if mod_role_id is None:
         return False
     return any(role.id == mod_role_id for role in user.roles)
-

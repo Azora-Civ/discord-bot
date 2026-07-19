@@ -15,9 +15,9 @@ PREFIX_REMOVE = "🟥"
 
 
 def permission_list_members(
-        actual: list[Permission],
-        target: list[Permission],
-        namelayer: str,
+    actual: list[Permission],
+    target: list[Permission],
+    namelayer: str,
 ) -> dict[str, object]:
     return _permission_list(
         actual=actual,
@@ -29,9 +29,9 @@ def permission_list_members(
 
 
 def permission_list_namelayers(
-        actual: list[Permission],
-        target: list[Permission],
-        name: str,
+    actual: list[Permission],
+    target: list[Permission],
+    name: str,
 ) -> dict[str, object]:
     return _permission_list(
         actual=actual,
@@ -43,11 +43,11 @@ def permission_list_namelayers(
 
 
 def _permission_list(
-        actual: list[Permission],
-        target: list[Permission],
-        title: str,
-        empty_description: str,
-        key: Callable[[Permission], str],
+    actual: list[Permission],
+    target: list[Permission],
+    title: str,
+    empty_description: str,
+    key: Callable[[Permission], str],
 ) -> dict[str, object]:
     target_by_key = {key(permission): permission for permission in target}
     actual_by_key = {key(permission): permission for permission in actual}
@@ -57,9 +57,13 @@ def _permission_list(
         target_permission = target_by_key.get(permission_key)
         actual_permission = actual_by_key.get(permission_key)
 
-        if target_permission and actual_permission and _permission_matches(
+        if (
+            target_permission
+            and actual_permission
+            and _permission_matches(
                 target_permission.level,
                 actual_permission.level,
+            )
         ):
             entries.append(
                 _permission_entry(
@@ -94,13 +98,15 @@ def _permission_list(
     fields = _grouped_fields(entries)
 
     if not fields:
-        return paginated_panel([
-            discord.Embed(
-                title=title,
-                description=empty_description,
-                color=discord.Color.blurple(),
-            )
-        ])
+        return paginated_panel(
+            [
+                discord.Embed(
+                    title=title,
+                    description=empty_description,
+                    color=discord.Color.blurple(),
+                )
+            ]
+        )
 
     chunks = _chunk_fields(fields)
     total = len(chunks)
@@ -108,11 +114,7 @@ def _permission_list(
     embeds: list[discord.Embed] = []
     for index, chunk in enumerate(chunks, start=1):
         embed = discord.Embed(
-            title=(
-                f"{title} ({index}/{total})"
-                if total > 1
-                else title
-            ),
+            title=(f"{title} ({index}/{total})" if total > 1 else title),
             description=f"{PREFIX_REMOVE} -> remove | {PREFIX_GIVE} -> add",
             color=discord.Color.blurple(),
         )
@@ -124,8 +126,8 @@ def _permission_list(
 
 
 def _permission_matches(
-        target_level: PermissionLevel,
-        actual_level: PermissionLevel,
+    target_level: PermissionLevel,
+    actual_level: PermissionLevel,
 ) -> bool:
     if target_level == actual_level:
         return True
@@ -139,10 +141,10 @@ def _permission_matches(
 
 
 def _permission_entry(
-        level: PermissionLevel,
-        prefix: str,
-        permission_key: str,
-        target_permission: Permission | None,
+    level: PermissionLevel,
+    prefix: str,
+    permission_key: str,
+    target_permission: Permission | None,
 ) -> tuple[PermissionLevel, str, str, int]:
     return (
         level,
@@ -153,9 +155,9 @@ def _permission_entry(
 
 
 def _permission_line(
-        prefix: str,
-        permission_key: str,
-        target_permission: Permission | None,
+    prefix: str,
+    permission_key: str,
+    target_permission: Permission | None,
 ) -> str:
     line = f"{prefix} {discord.utils.escape_markdown(permission_key)}"
 
@@ -167,20 +169,16 @@ def _permission_line(
 
 
 def _grouped_fields(
-        entries: list[tuple[PermissionLevel, str, str, int]],
+    entries: list[tuple[PermissionLevel, str, str, int]],
 ) -> list[tuple[str, str]]:
     fields: list[tuple[str, str]] = []
 
     for level in sorted(
-            {entry[0] for entry in entries},
-            key=lambda level: level.value,
-            reverse=True,
+        {entry[0] for entry in entries},
+        key=lambda level: level.value,
+        reverse=True,
     ):
-        level_entries = [
-            entry
-            for entry in entries
-            if entry[0] == level
-        ]
+        level_entries = [entry for entry in entries if entry[0] == level]
         lines = [
             line
             for _, _, line, _ in sorted(
@@ -236,8 +234,7 @@ def _chunk_fields(fields: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
         field_length = len(field[0]) + len(field[1])
 
         if current_chunk and (
-                len(current_chunk) >= MAX_FIELD_COUNT
-                or current_length + field_length > MAX_EMBED_LENGTH
+            len(current_chunk) >= MAX_FIELD_COUNT or current_length + field_length > MAX_EMBED_LENGTH
         ):
             chunks.append(current_chunk)
             current_chunk = []

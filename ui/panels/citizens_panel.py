@@ -31,11 +31,8 @@ def citizen_list_panel(
 
     pages = []
     for index in range(0, len(citizens), PAGE_SIZE):
-        chunk = citizens[index:index + PAGE_SIZE]
-        lines = [
-            _citizen_line(citizen)
-            for citizen in chunk
-        ]
+        chunk = citizens[index : index + PAGE_SIZE]
+        lines = [_citizen_line(citizen) for citizen in chunk]
         embed = discord.Embed(
             title="Citizens",
             description="\n".join(lines),

@@ -41,9 +41,7 @@ class CitizensCog(commands.Cog):
 
     async def _set_snitch_channel(self):
         self.snitch_cache = True
-        self.snitch_channel = await self.bot.db.key_values.get_int(
-            key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY
-        )
+        self.snitch_channel = await self.bot.db.key_values.get_int(key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY)
 
     async def _is_mod(self, interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
@@ -149,10 +147,7 @@ class CitizensCog(commands.Cog):
             )
             await self._set_snitch_channel()
             await interaction.edit_original_response(
-                content=(
-                    "Citizen activity will now be tracked from snitch hits "
-                    f"in {channel.mention}."
-                )
+                content=(f"Citizen activity will now be tracked from snitch hits in {channel.mention}.")
             )
 
     @root_group.command(
@@ -178,12 +173,13 @@ class CitizensCog(commands.Cog):
                 return
 
             await self.bot.db.key_values.set_int(cfg.CITIZEN_MOD_ROLE_ID_KEY, role.id)
-            await interaction.edit_original_response(
-                content=f"Citizen mod role set to {role.mention}."
-            )
+            await interaction.edit_original_response(content=f"Citizen mod role set to {role.mention}.")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        if message.author.id != cfg.KIRA_USER_ID:
+            return
+
         if not self.snitch_cache:
             await self._set_snitch_channel()
 
