@@ -1,12 +1,18 @@
+from typing import TYPE_CHECKING
 
-from helpers.general import connect
 from models.permission import Permission, PermissionLevel
+
+if TYPE_CHECKING:
+    from database import Database
 
 
 class PermissionsRepository:
+    def __init__(self, db: "Database") -> None:
+        self.db = db
+
     async def create_table(self) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS permissions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,11 +24,10 @@ class PermissionsRepository:
                 )
                 """
             )
-            await db.commit()
 
     async def create(self, permission: Permission) -> int:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 INSERT INTO permissions (ign, namelayer, level)
                 VALUES (?, ?, ?)
@@ -33,15 +38,14 @@ class PermissionsRepository:
                     permission.level.name,
                 ),
             )
-            await db.commit()
             return cursor.lastrowid
 
     async def update(self, permission: Permission) -> None:
         if permission.id is None:
             raise ValueError("Cannot update permission without id")
 
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 UPDATE permissions
                 SET ign = ?, namelayer = ?, level = ?
@@ -54,25 +58,23 @@ class PermissionsRepository:
                     permission.id,
                 ),
             )
-            await db.commit()
 
     async def delete(self, permission_id: int) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 "DELETE FROM permissions WHERE id = ?",
                 (permission_id,),
             )
-            await db.commit()
 
     async def fetch_all(self) -> list[Permission]:
-        async with connect() as db:
-            cursor = await db.execute("SELECT * FROM permissions")
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute("SELECT * FROM permissions")
             rows = await cursor.fetchall()
             return [self._from_row(row) for row in rows]
 
     async def fetch_by_ign(self, ign: str) -> list[Permission]:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 "SELECT * FROM permissions WHERE ign = ?",
                 (ign,),
             )
@@ -80,8 +82,8 @@ class PermissionsRepository:
             return [self._from_row(row) for row in rows]
 
     async def fetch_by_namelayer(self, namelayer: str) -> list[Permission]:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 "SELECT * FROM permissions WHERE namelayer = ?",
                 (namelayer,),
             )
@@ -93,8 +95,8 @@ class PermissionsRepository:
         ign: str,
         namelayer: str,
     ) -> Permission | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT * FROM permissions
                 WHERE ign = ? AND namelayer = ?
@@ -113,15 +115,14 @@ class PermissionsRepository:
 
         placeholders = ", ".join("?" for _ in namelayers)
 
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 f"""
                 DELETE FROM permissions
                 WHERE namelayer IN ({placeholders})
                 """,
                 tuple(namelayers),
             )
-            await db.commit()
             return cursor.rowcount
 
     async def batch_create(
@@ -131,8 +132,8 @@ class PermissionsRepository:
         if not permissions:
             return
 
-        async with connect() as db:
-            await db.executemany(
+        async with self.db.transaction() as conn:
+            await conn.executemany(
                 """
                 INSERT INTO permissions (ign, namelayer, level)
                 VALUES (?, ?, ?)
@@ -146,7 +147,6 @@ class PermissionsRepository:
                     for permission in permissions
                 ],
             )
-            await db.commit()
 
     def _from_row(self, row) -> Permission:
         return Permission(

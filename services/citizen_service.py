@@ -1,17 +1,19 @@
 from datetime import UTC, datetime, timedelta
-
-import discord
-from discord.ext import commands
+from typing import TYPE_CHECKING
 
 from models.citizen import Citizen, Citizenship
 from models.ShownException import BadRequestException, NotFoundException
-from repositories.citizens import CitizenRepository
 
+if TYPE_CHECKING:
+    from database import Database
 
 class CitizenService:
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.repo = CitizenRepository()
+    def __init__(self, db: "Database"):
+        self.db = db
+
+    @property
+    def repo(self):
+        return self.db.citizens
 
     async def list_citizens(self, ign: str | None = None) -> list[Citizen]:
         citizens = await self.repo.fetch_all()
@@ -30,7 +32,7 @@ class CitizenService:
         *,
         citizen_id: int | None = None,
         ign: str | None = None,
-        user: discord.User | discord.Member | None = None,
+        user_id: int | None = None,
     ) -> Citizen:
         citizen = None
 
@@ -38,8 +40,8 @@ class CitizenService:
             citizen = await self.repo.fetch_by_id(citizen_id)
         elif ign is not None:
             citizen = await self.repo.fetch_by_ign(ign)
-        elif user is not None:
-            citizen = await self.repo.fetch_by_user_id(user.id)
+        elif user_id is not None:
+            citizen = await self.repo.fetch_by_user_id(user_id)
 
         if citizen is None:
             raise NotFoundException("Citizen not found.")

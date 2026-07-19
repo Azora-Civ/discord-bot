@@ -3,8 +3,6 @@ from discord import Client, Member
 
 from cogs.citizens_cog import ign_from_user
 from models.ShownException import BadRequestException, NotFoundException
-from repositories.group_permissions import GroupPermissionsRepository
-from services.permission_service import PermissionService
 from ui.panels.paginated_panel import paginated_panel
 
 MAX_COMMAND_BLOCK_LENGTH = 3500
@@ -16,28 +14,38 @@ async def permission_command_embeds(
         ign: str | None = None,
         user: Member | None = None
 ) -> dict[str, object]:
-    service: PermissionService = client.get_cog("PermissionsCog").service
+    cog = client.get_cog("PermissionsCog")
 
     if namelayer is not None:
-        corrected_namelayer = await GroupPermissionsRepository().correct_namelayer(namelayer)
+        corrected_namelayer = await client.db.group_permissions.correct_namelayer(namelayer)
         if corrected_namelayer is None:
             raise NotFoundException(f"Couldn't find namelayer: {namelayer}!")
 
+        role_member_igns_by_id, role_sources_by_id = await cog._role_context_for_namelayer(
+            corrected_namelayer
+        )
         return _permission_command_embeds(
             title=f"Commands to align '{corrected_namelayer}' namelayer",
-            commands=await service.get_namelayer_member_commands(corrected_namelayer),
+            commands=await cog.service.get_namelayer_member_commands(
+                corrected_namelayer,
+                role_member_igns_by_id,
+                role_sources_by_id,
+            ),
         )
 
     if ign is None:
         if user is None:
             raise BadRequestException("Must pass either a role, ign or citizen.")
 
-        ign = await ign_from_user(user)
+        ign = await ign_from_user(client, user)
 
     name = user.mention if user else ign
     return _permission_command_embeds(
         title=f"Commands to align permissions for {name}",
-        commands=await service.get_user_permission_commands(ign),
+        commands=await cog.service.get_user_permission_commands(
+            ign,
+            await cog._role_context_for_user(ign),
+        ),
     )
 
 

@@ -1,5 +1,3 @@
-from typing import TYPE_CHECKING
-
 import discord
 from discord import CheckboxGroupOption, SelectOption
 
@@ -16,12 +14,9 @@ from texts import (
 )
 from ui.modals.registration_duchy_modal import get_duchies
 
-if TYPE_CHECKING:
-    from services.registration_service import RegistrationService
 
-
-async def citizen_application_modal(registration: Registration):
-    duchies = await get_duchies()
+async def citizen_application_modal(db, registration: Registration):
+    duchies = await get_duchies(db)
 
     return CitizenApplicationModal(
         duchies=duchies,
@@ -123,6 +118,6 @@ class CitizenApplicationModal(discord.ui.Modal, title=CITIZEN_APPLICATION_MODAL_
             registration.data.duchy_mention = duchy.mention or ""
             registration.data.duchy_emoji = duchy.emoji or ""
 
-            service: RegistrationService = interaction.client.get_cog("RegistrationCog").service
-            await service.submit_citizen_application(registration)
+            cog = interaction.client.get_cog("RegistrationCog")
+            await cog.submit_citizen_application(registration)
             await interaction.edit_original_response(content=CITIZEN_APPLICATION_MODAL_SUBMITTED)

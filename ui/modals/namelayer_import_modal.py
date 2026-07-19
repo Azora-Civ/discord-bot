@@ -4,7 +4,6 @@ import discord
 from helpers.deflate import deflate_text, inflate_text
 from helpers.general import processing_response
 from models.permission import Permission, PermissionLevel
-from services.permission_service import PermissionService
 
 
 class NameLayerImportModal(
@@ -36,8 +35,7 @@ class NameLayerImportModal(
         async with processing_response(interaction):
             macro_output = self.macro_input.value
             entries = parse_results(macro_output)
-            service: PermissionService = interaction.client.get_cog("PermissionsCog").service
-            await service.import_permissions(entries)
+            await interaction.client.permission_service.import_permissions(entries)
 
 def parse_results(text: str) -> list[Permission]:
     results = []

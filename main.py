@@ -4,33 +4,53 @@ import logging
 import discord
 from discord.ext import commands
 
-from config import GUILD, TOKEN
-from database import init_db
+from config import DB_PATH, GUILD, TOKEN
+from database import Database
+from services.citizen_service import CitizenService
+from services.permission_service import PermissionService
+from services.registration_service import RegistrationService
 from setup_logging import setup_logging
 
 setup_logging()
 
 log = logging.getLogger(__name__)
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+class RoyalSteward(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
 
+        self.db = Database(DB_PATH)
+        self.citizen_service = CitizenService(self.db)
+        self.registration_service = RegistrationService(self.db)
+        self.permission_service = PermissionService(self.db)
 
-@bot.event
-async def on_ready():
-    synced = await bot.tree.sync(guild=GUILD)
-    log.info(f"Logged in as {bot.user}")
-    log.info(f"Synced {len(synced)} command(s)")
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+        )
+
+    async def setup_hook(self) -> None:
+        await self.db.connect()
+        await self.load_extension("cogs.citizens_cog")
+        await self.load_extension("cogs.registration_cog")
+        await self.load_extension("cogs.permissions_cog")
+
+        synced = await self.tree.sync(guild=GUILD)
+        log.info(f"Logged in as {self.user}")
+        log.info(f"Synced {len(synced)} command(s)")
+
+    async def close(self):
+        await self.db.close()
+        await super().close()
 
 
 async def main():
-    await init_db()
+    bot = RoyalSteward()
+
     async with bot:
-        await bot.load_extension("cogs.citizens_cog")
-        await bot.load_extension("cogs.registration_cog")
-        await bot.load_extension("cogs.permissions_cog")
         await bot.start(TOKEN)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

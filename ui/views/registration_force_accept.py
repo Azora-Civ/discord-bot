@@ -1,12 +1,6 @@
-from typing import TYPE_CHECKING
-
 import discord
 
 from helpers.general import processing_response
-from repositories.registrations import RegistrationRepository
-
-if TYPE_CHECKING:
-    from services.registration_service import RegistrationService
 
 
 class RegistrationForceAcceptView(discord.ui.View):
@@ -24,11 +18,11 @@ class RegistrationForceAcceptView(discord.ui.View):
         button: discord.ui.Button,
     ):
         async with processing_response(interaction):
-            thread_id = interaction.channel_id
-            repo = RegistrationRepository()
-            registration = await repo.fetch_by_thread_id(thread_id)
+            registration = await interaction.client.db.registrations.fetch_by_thread_id(
+                interaction.channel_id
+            )
 
             assert registration is not None, "Couldn't find registration"
 
-            service: RegistrationService = interaction.client.get_cog("RegistrationCog").service
-            await service.accept_registration(registration, True)
+            cog = interaction.client.get_cog("RegistrationCog")
+            await cog.accept_registration(registration, True)

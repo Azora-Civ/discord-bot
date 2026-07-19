@@ -5,11 +5,10 @@ import discord
 
 import config as cfg
 from models.duchy import Duchy
-from repositories.key_values import KeyValueRepository
 
 
-async def get_duchies() -> list[Duchy]:
-    duchies_json = await KeyValueRepository().get(key=cfg.REGISTRATION_DUCHY_KEY)
+async def get_duchies(db) -> list[Duchy]:
+    duchies_json = await db.key_values.get(key=cfg.REGISTRATION_DUCHY_KEY)
 
     if duchies_json:
         duchies = [Duchy(**duchy) for duchy in json.loads(duchies_json)]
@@ -18,16 +17,17 @@ async def get_duchies() -> list[Duchy]:
 
     return duchies
 
-async def registration_duchy_modal():
-    duchies = await get_duchies()
+async def registration_duchy_modal(db):
+    duchies = await get_duchies(db)
 
-    return RegistrationDuchyModal(duchies)
+    return RegistrationDuchyModal(db, duchies)
 
 
 class RegistrationDuchyModal(discord.ui.Modal, title="Duchy Entry"):
-    def __init__(self, duchies: list[Duchy], **kwargs):
+    def __init__(self, db, duchies: list[Duchy], **kwargs):
         discord.ui.Modal.__init__(self, **kwargs)
 
+        self.db = db
         self.duchies.default = _encode(duchies)
 
     duchies = discord.ui.TextInput(
@@ -49,7 +49,7 @@ class RegistrationDuchyModal(discord.ui.Modal, title="Duchy Entry"):
             )
             return
 
-        await KeyValueRepository().set(
+        await self.db.key_values.set(
             key=cfg.REGISTRATION_DUCHY_KEY,
             value=json.dumps([asdict(duchy) for duchy in duchies]),
         )

@@ -1,15 +1,21 @@
 import json
 from dataclasses import asdict, fields
+from typing import TYPE_CHECKING
 
-from helpers.general import connect
 from models.citizen import Citizenship
 from models.registration import Registration, RegistrationData, RegistrationStatus
 
+if TYPE_CHECKING:
+    from database import Database
+
 
 class RegistrationRepository:
+    def __init__(self, db: "Database") -> None:
+        self.db = db
+
     async def create_table(self) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS registrations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,11 +28,10 @@ class RegistrationRepository:
                 )
                 """
             )
-            await db.commit()
 
     async def create(self, registration: Registration) -> int:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 INSERT INTO registrations (
                     poster_id,
@@ -47,15 +52,14 @@ class RegistrationRepository:
                     registration.status.name,
                 ),
             )
-            await db.commit()
             return int(cursor.lastrowid)
 
     async def update(self, registration: Registration) -> None:
         if registration.id is None:
             raise ValueError("Cannot update registration without id")
 
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 """
                 UPDATE registrations
                 SET
@@ -77,19 +81,17 @@ class RegistrationRepository:
                     registration.id,
                 ),
             )
-            await db.commit()
 
     async def delete(self, registration_id: int) -> None:
-        async with connect() as db:
-            await db.execute(
+        async with self.db.transaction() as conn:
+            await conn.execute(
                 "DELETE FROM registrations WHERE id = ?",
                 (registration_id,),
             )
-            await db.commit()
 
     async def fetch_by_id(self, registration_id: int) -> Registration | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM registrations
@@ -101,8 +103,8 @@ class RegistrationRepository:
             return self._from_row(row) if row else None
 
     async def fetch_by_user_id(self, poster_id: int) -> Registration | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM registrations
@@ -114,8 +116,8 @@ class RegistrationRepository:
             return self._from_row(row) if row else None
 
     async def fetch_by_ign(self, ign: str) -> Registration | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM registrations
@@ -127,8 +129,8 @@ class RegistrationRepository:
             return self._from_row(row) if row else None
 
     async def fetch_all(self) -> list[Registration]:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM registrations
@@ -139,8 +141,8 @@ class RegistrationRepository:
             return [self._from_row(row) for row in rows]
 
     async def fetch_by_thread_id(self, thread_id: int) -> Registration | None:
-        async with connect() as db:
-            cursor = await db.execute(
+        async with self.db.transaction() as conn:
+            cursor = await conn.execute(
                 """
                 SELECT *
                 FROM registrations

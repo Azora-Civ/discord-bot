@@ -1,10 +1,8 @@
-
 import discord
 
 from helpers.general import processing_response
 from models.registration import Registration
 from models.ShownException import BadRequestException
-from repositories.citizens import CitizenRepository
 from ui.modals.citizen_application_modal import citizen_application_modal
 
 
@@ -23,19 +21,19 @@ class RegistrationView(discord.ui.View):
         button: discord.ui.Button,
     ):
         async with processing_response(interaction, show_processing=False):
-            citizen = await CitizenRepository().fetch_by_user_id(interaction.user.id)
+            citizen = await interaction.client.db.citizens.fetch_by_user_id(interaction.user.id)
             if citizen is not None:
                 raise BadRequestException("You are already registered!")
 
             await interaction.response.send_modal(
                 await citizen_application_modal(
+                    interaction.client.db,
                     Registration(
                         poster_id=interaction.user.id,
                         is_for_self=True,
-                    )
+                    ),
                 )
             )
-
 
     @discord.ui.button(
         label="Apply for Someone Else",
@@ -48,7 +46,7 @@ class RegistrationView(discord.ui.View):
         button: discord.ui.Button,
     ):
         async with processing_response(interaction, show_processing=False):
-            citizen = await CitizenRepository().fetch_by_user_id(interaction.user.id)
+            citizen = await interaction.client.db.citizens.fetch_by_user_id(interaction.user.id)
             if citizen is None:
                 raise BadRequestException(
                     "You can only apply for Citizenship for someone else if you are a citizen!"
@@ -56,9 +54,10 @@ class RegistrationView(discord.ui.View):
 
             await interaction.response.send_modal(
                 await citizen_application_modal(
+                    interaction.client.db,
                     Registration(
                         poster_id=interaction.user.id,
                         is_for_self=False,
-                    )
+                    ),
                 )
             )

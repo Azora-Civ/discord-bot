@@ -8,9 +8,9 @@ load_dotenv()
 
 # General
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = os.getenv("GUILD_ID")
+GUILD_ID = int(os.getenv("GUILD_ID"))
 GUILD = discord.Object(id=GUILD_ID)
-KIRA_USER_ID = os.getenv("KIRA_USER_ID") or 952325487663939645
+KIRA_USER_ID = int(os.getenv("KIRA_USER_ID") or 952325487663939645)
 
 
 # DB

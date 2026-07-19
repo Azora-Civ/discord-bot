@@ -8,13 +8,15 @@ import config as cfg
 
 
 async def get_guild(client: Client) -> Guild:
-    id = cfg.GUILD_ID
-    return client.get_guild(id) or await client.fetch_guild(id)
+    return client.get_guild(cfg.GUILD_ID) or await client.fetch_guild(cfg.GUILD_ID)
 
 
 async def get_member(client, user_id: int) -> Member | None:
     guild = await get_guild(client)
-    return guild.get_member(user_id) or await guild.fetch_member(user_id)
+    try:
+        return guild.get_member(user_id) or await guild.fetch_member(user_id)
+    except discord.NotFound:
+        return None
 
 
 async def get_members(client) -> Sequence[Member]:

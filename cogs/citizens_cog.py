@@ -7,18 +7,14 @@ from discord.ext import commands
 import config as cfg
 from helpers.general import processing_response
 from models.ShownException import NotFoundException
-from repositories.citizens import CitizenRepository
-from repositories.key_values import KeyValueRepository
-from services.citizen_service import CitizenService
 from ui.panels.citizens_panel import citizen_list_panel, citizen_panel, citizen_stats_panel
 from ui.views.citizen_management_view import CitizenManagementView
 
 SNITCH_HIT_REGEX = re.compile(r"`\[[^\]]+\]`\s+\*\*(.+?)\*\*\s+is at\s+.+")
 
 
-async def ign_from_user(user: Member) -> str:
-    p_repo = CitizenRepository()
-    person = await p_repo.fetch_by_user_id(user.id)
+async def ign_from_user(bot: commands.Bot, user: Member) -> str:
+    person = await bot.db.citizens.fetch_by_user_id(user.id)
     if not person:
         raise NotFoundException("User is not registered as a citizen/resident.")
 
@@ -28,7 +24,7 @@ async def ign_from_user(user: Member) -> str:
 class CitizensCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.service = CitizenService(bot)
+        self.service = bot.citizen_service
         self.snitch_cache = False
         self.snitch_channel: int | None = None
 
@@ -39,7 +35,7 @@ class CitizensCog(commands.Cog):
 
     async def _set_snitch_channel(self):
         self.snitch_cache = True
-        self.snitch_channel = await KeyValueRepository().get_int(
+        self.snitch_channel = await self.bot.db.key_values.get_int(
             key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY
         )
 
@@ -50,7 +46,7 @@ class CitizensCog(commands.Cog):
         if interaction.user.guild_permissions.administrator:
             return True
 
-        role_id = await KeyValueRepository().get_int(cfg.CITIZEN_MOD_ROLE_ID_KEY)
+        role_id = await self.bot.db.key_values.get_int(cfg.CITIZEN_MOD_ROLE_ID_KEY)
         return role_id is not None and any(role.id == role_id for role in interaction.user.roles)
 
     @root_group.command(
@@ -83,7 +79,7 @@ class CitizensCog(commands.Cog):
             if user is None and ign is None:
                 user = interaction.user
 
-            citizen = await self.service.get_citizen(user=user, ign=ign)
+            citizen = await self.service.get_citizen(user_id=user.id if user else None, ign=ign)
             msg = {"embed": citizen_panel(citizen)}
             if await self._is_mod(interaction):
                 msg["view"] = CitizenManagementView(citizen)
@@ -117,7 +113,7 @@ class CitizensCog(commands.Cog):
         channel: discord.TextChannel,
     ):
         async with processing_response(interaction, ephemeral=False):
-            await KeyValueRepository().set_int(
+            await self.bot.db.key_values.set_int(
                 key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY,
                 value=channel.id,
             )
@@ -142,13 +138,13 @@ class CitizensCog(commands.Cog):
     ):
         async with processing_response(interaction, ephemeral=False):
             if role is None:
-                await KeyValueRepository().delete(cfg.CITIZEN_MOD_ROLE_ID_KEY)
+                await self.bot.db.key_values.delete(cfg.CITIZEN_MOD_ROLE_ID_KEY)
                 await interaction.edit_original_response(
                     content="Citizen mod role cleared. Administrators can still manage citizens."
                 )
                 return
 
-            await KeyValueRepository().set_int(cfg.CITIZEN_MOD_ROLE_ID_KEY, role.id)
+            await self.bot.db.key_values.set_int(cfg.CITIZEN_MOD_ROLE_ID_KEY, role.id)
             await interaction.edit_original_response(
                 content=f"Citizen mod role set to {role.mention}."
             )
