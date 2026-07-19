@@ -2,8 +2,10 @@ import discord
 
 from config import CITIZEN_MOD_ROLE_ID_KEY
 from helpers.general import respond
+from models.citizen import Citizen
 from models.ShownException import BadRequestException, BadStateException
 from ui.modals.citizen_application_modal import citizen_application_modal
+from ui.panels.permission_commands_panel import permission_command_embeds
 
 
 class RegistrationResponseView(discord.ui.View):
@@ -32,7 +34,8 @@ class RegistrationResponseView(discord.ui.View):
             cog = interaction.client.get_cog("RegistrationCog")
             if cog is None:
                 raise BadStateException("Registration commands are not loaded.")
-            await cog.accept_registration(registration, False)
+            citizen = await cog.accept_registration(registration, False)
+            await _send_permission_commands(interaction, citizen)
 
     @discord.ui.button(
         label="Reject",
@@ -96,3 +99,16 @@ async def _is_mod(interaction: discord.Interaction):
     if mod_role_id is None:
         return False
     return any(role.id == mod_role_id for role in user.roles)
+
+
+async def _send_permission_commands(interaction: discord.Interaction, citizen: Citizen | None) -> None:
+    if citizen is None:
+        await interaction.edit_original_response(content="Registration was already accepted.")
+        return
+
+    msg = await permission_command_embeds(interaction.client, ign=citizen.in_game_name)
+    msg["content"] = f"Accepted `{citizen.in_game_name}`. Permission commands:"
+
+    response = await interaction.edit_original_response(**msg)
+    if view := msg.get("view"):
+        view.message = response

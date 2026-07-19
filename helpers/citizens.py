@@ -43,7 +43,7 @@ async def sync_citizen_member(
     if citizen is not None:
         try:
             await member.edit(nick=citizen.in_game_name)
-        except discord.DiscordException:
+        except discord.DiscordException or discord.Forbidden:
             log.exception("Failed to edit nickname after citizen change: %s", citizen.id)
 
     try:
