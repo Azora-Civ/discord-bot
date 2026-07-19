@@ -7,7 +7,7 @@ from discord.ext import commands
 
 import config as cfg
 from helpers.discord import get_message
-from helpers.general import processing_response
+from helpers.general import respond
 from models.registration import Registration, RegistrationStatus
 from models.ShownException import BadStateException
 from services.events import RegistrationChangedEvent
@@ -70,7 +70,7 @@ class RegistrationCog(commands.Cog):
         if not registration.data.snitch_hit and not force:
             raise BadStateException(
                 content=(
-                    "Snitch has not yet been hit for this person! Therefore, the in-game "
+                    "Registration snitch has not yet been hit! Therefore, the Minecraft Username "
                     f"'{registration.in_game_name}' is unconfirmed."
                 ),
                 view=RegistrationForceAcceptView(),
@@ -123,11 +123,15 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def edit_panel(self, interaction: discord.Interaction):
-        embed_config = await get_embed_config(self.bot.db)
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        await interaction.response.send_modal(
-            RegistrationEmbedModal(self.bot.db, embed_config)
-        )
+            embed_config = await get_embed_config(self.bot.db)
+
+            await interaction.response.send_modal(
+                RegistrationEmbedModal(self.bot.db, embed_config)
+            )
 
     @root_group.command(
         name="panel", description="[ADMIN] Setup the registration panel here."
@@ -135,7 +139,10 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def panel(self, interaction: discord.Interaction):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             panel = await registration_panel(self.bot.db)
             await interaction.channel.send(**panel)
             await interaction.edit_original_response(content="Registration panel posted.")
@@ -149,7 +156,10 @@ class RegistrationCog(commands.Cog):
     async def set_registration_channel(
         self, interaction: discord.Interaction, channel: discord.ForumChannel
     ):
-        async with processing_response(interaction, ephemeral=False):
+        async with respond(interaction, ephemeral=False) as should_process:
+            if not should_process:
+                return
+
             await self.key_values.set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
             await interaction.edit_original_response(
                 content=(
@@ -171,7 +181,10 @@ class RegistrationCog(commands.Cog):
         snitch_group: str,
         channel: discord.TextChannel,
     ):
-        async with processing_response(interaction, ephemeral=False):
+        async with respond(interaction, ephemeral=False) as should_process:
+            if not should_process:
+                return
+
             await self.key_values.set(key=cfg.REGISTRATION_SNITCH_NAME_KEY, value=snitch)
             await self.key_values.set(
                 key=cfg.REGISTRATION_SNITCH_GROUP_KEY, value=snitch_group
@@ -205,7 +218,10 @@ class RegistrationCog(commands.Cog):
         citizen_role: discord.Role | None = None,
         member_role: discord.Role | None = None,
     ):
-        async with processing_response(interaction, ephemeral=False):
+        async with respond(interaction, ephemeral=False) as should_process:
+            if not should_process:
+                return
+
             roles = {
                 cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY: resident_role,
                 cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY: citizen_role,
@@ -235,9 +251,13 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def set_duchies(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(
-            await registration_duchy_modal(self.bot.db)
-        )
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
+            await interaction.response.send_modal(
+                await registration_duchy_modal(self.bot.db)
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

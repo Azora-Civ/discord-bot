@@ -2,28 +2,18 @@ import logging
 import re
 
 import discord
-from discord import Member, app_commands
+from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
-from helpers.discord import get_member
-from helpers.general import processing_response
-from models.citizen import Citizen, Citizenship
-from models.ShownException import NotFoundException
+from helpers.citizens import sync_citizen_member
+from helpers.general import respond
 from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.panels.citizens_panel import citizen_list_panel, citizen_panel, citizen_stats_panel
 from ui.views.citizen_management_view import CitizenManagementView
 
 log = logging.getLogger(__name__)
 SNITCH_HIT_REGEX = re.compile(r"`\[[^\]]+\]`\s+\*\*(.+?)\*\*\s+is at\s+.+")
-
-
-async def ign_from_user(bot: commands.Bot, user: Member) -> str:
-    person = await bot.db.citizens.fetch_by_user_id(user.id)
-    if not person:
-        raise NotFoundException("User is not registered as a citizen/resident.")
-
-    return person.in_game_name
 
 
 class CitizensCog(commands.Cog):
@@ -39,74 +29,10 @@ class CitizensCog(commands.Cog):
             return
 
         if event.previous and event.previous.user_id != event.citizen.user_id:
-            await self._sync_citizen_member(event.previous.user_id, None)
+            await sync_citizen_member(self.bot, event.previous.user_id, None, log=log)
 
         citizen = None if event.kind == CitizenChangeKind.DELETED else event.citizen
-        await self._sync_citizen_member(event.citizen.user_id, citizen)
-
-    async def _sync_citizen_member(
-        self,
-        user_id: int | None,
-        citizen: Citizen | None,
-    ) -> None:
-        if user_id is None:
-            return
-
-        member = await get_member(self.bot, user_id)
-        if member is None:
-            return
-
-        if citizen is not None:
-            try:
-                await member.edit(nick=citizen.in_game_name)
-            except discord.DiscordException:
-                log.exception("Failed to edit nickname after citizen change: %s", citizen.id)
-
-        try:
-            await self._sync_citizenship_roles(member, citizen.citizenship if citizen else None)
-        except discord.DiscordException:
-            log.exception("Failed to update roles after citizen change: %s", user_id)
-
-    async def _sync_citizenship_roles(
-        self,
-        member: Member,
-        citizenship: Citizenship | None,
-    ) -> None:
-        role_ids = {
-            Citizenship.RESIDENT: await self.bot.db.key_values.get_int(cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY),
-            Citizenship.CITIZEN: await self.bot.db.key_values.get_int(cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY),
-            "member": await self.bot.db.key_values.get_int(cfg.REGISTRATION_MEMBER_ROLE_ID_KEY),
-        }
-
-        managed_role_ids = {role_id for role_id in role_ids.values() if role_id is not None}
-        desired_role_ids = set()
-        if citizenship is not None:
-            desired_role_ids = {
-                role_ids["member"],
-                role_ids.get(citizenship),
-            } - {None}
-
-        roles_to_add = [
-            role
-            for role_id in desired_role_ids
-            if (role := member.guild.get_role(role_id)) is not None and role not in member.roles
-        ]
-        roles_to_remove = [
-            role
-            for role in member.roles
-            if role.id in managed_role_ids and role.id not in desired_role_ids
-        ]
-
-        if roles_to_remove:
-            await member.remove_roles(
-                *roles_to_remove,
-                reason="Citizenship changed",
-            )
-        if roles_to_add:
-            await member.add_roles(
-                *roles_to_add,
-                reason="Citizenship changed",
-            )
+        await sync_citizen_member(self.bot, event.citizen.user_id, citizen, log=log)
 
     root_group = app_commands.Group(
         name="citizens",
@@ -133,14 +59,29 @@ class CitizensCog(commands.Cog):
         name="list",
         description="List citizens, optionally filtering by in-game name.",
     )
+    @app_commands.describe(
+        last_online_days="Only show citizens seen online within this many days.",
+    )
     async def list(
         self,
         interaction: discord.Interaction,
         ign: str | None = None,
+        last_online_days: app_commands.Range[int, 1, 3650] | None = None,
     ):
-        async with processing_response(interaction):
-            citizens = await self.service.list_citizens(ign)
-            msg = citizen_list_panel(citizens, ign_filter=ign, author_id=interaction.user.id)
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            citizens = await self.service.list_citizens(
+                ign,
+                last_online_days=last_online_days,
+            )
+            msg = citizen_list_panel(
+                citizens,
+                ign_filter=ign,
+                last_online_days=last_online_days,
+                author_id=interaction.user.id,
+            )
             response = await interaction.edit_original_response(content=None, **msg)
             if view := msg.get("view"):
                 view.message = response
@@ -155,7 +96,10 @@ class CitizensCog(commands.Cog):
         user: discord.Member | None = None,
         ign: str | None = None,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if user is None and ign is None:
                 user = interaction.user
 
@@ -174,7 +118,10 @@ class CitizensCog(commands.Cog):
         interaction: discord.Interaction,
         active_days: app_commands.Range[int, 1, 365] = 14,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             total, active = await self.service.stats(active_days)
             await interaction.edit_original_response(
                 content=None,
@@ -192,7 +139,10 @@ class CitizensCog(commands.Cog):
         interaction: discord.Interaction,
         channel: discord.TextChannel,
     ):
-        async with processing_response(interaction, ephemeral=False):
+        async with respond(interaction, ephemeral=False) as should_process:
+            if not should_process:
+                return
+
             await self.bot.db.key_values.set_int(
                 key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY,
                 value=channel.id,
@@ -216,7 +166,10 @@ class CitizensCog(commands.Cog):
         interaction: discord.Interaction,
         role: discord.Role | None = None,
     ):
-        async with processing_response(interaction, ephemeral=False):
+        async with respond(interaction, ephemeral=False) as should_process:
+            if not should_process:
+                return
+
             if role is None:
                 await self.bot.db.key_values.delete(cfg.CITIZEN_MOD_ROLE_ID_KEY)
                 await interaction.edit_original_response(

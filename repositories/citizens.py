@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 class CitizenRepository:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: "Database") -> None:
         self.db = db
 
     async def create_table(self) -> None:

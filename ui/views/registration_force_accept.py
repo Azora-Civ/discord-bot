@@ -1,6 +1,6 @@
 import discord
 
-from helpers.general import processing_response
+from helpers.general import respond
 
 
 class RegistrationForceAcceptView(discord.ui.View):
@@ -17,7 +17,12 @@ class RegistrationForceAcceptView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            button.disabled = True
+
             registration = await interaction.client.db.registrations.fetch_by_thread_id(
                 interaction.channel_id
             )

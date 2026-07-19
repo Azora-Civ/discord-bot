@@ -1,81 +1,110 @@
 import inspect
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 import discord
 
+from main import RoyalSteward
 from models.ShownException import ShownException
 
 
 @asynccontextmanager
-async def processing_response(
+async def respond(
     interaction: discord.Interaction,
     *,
-    show_processing: bool = True,
+    defer: bool = True,
     ephemeral: bool = True,
-    log: logging.Logger | None = None,
-):
-    logger = log or get_caller_logger(depth=2)
-    owns_response = False
+    logger: logging.Logger | None = None,
+) -> AsyncIterator[bool]:
+    bot = cast(RoyalSteward, interaction.client)
+    logger = logger or get_caller_logger(depth=2)
 
-    if show_processing:
-        await interaction.response.defer(
-            thinking=True,
-            ephemeral=ephemeral,
-        )
-        owns_response = True
-
-    async def handle_error(**message) -> None:
-        logger.exception(
-            "Interaction failed: user=%s guild=%s channel=%s",
-            interaction.user.id,
-            interaction.guild_id,
-            interaction.channel_id,
-        )
-
-        if owns_response:
-            await interaction.edit_original_response(**message)
-        elif not interaction.response.is_done():
-            await interaction.response.send_message(
+    with bot.interaction_lease() as accepted:
+        if not accepted:
+            await _respond(
+                interaction,
                 ephemeral=ephemeral,
-                **message,
+                content="The bot is shutting down. Try again in a moment.",
             )
-        else:
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                **message,
-            )
-
-    try:
-        yield
-
-    except ShownException as error:
-        await handle_error(**error.data)
-        return
-
-    except Exception:
-        await handle_error(content="Unexpected error.")
-        raise
-
-    else:
-        if not owns_response:
+            yield False
             return
 
-        try:
-            message = await interaction.original_response()
+        deferred = False
 
-            is_empty = (
-                    not message.content
-                    and not message.embeds
-                    and not message.attachments
-                    and not message.components
+        try:
+            if defer:
+                await interaction.response.defer(
+                    thinking=True,
+                    ephemeral=ephemeral,
+                )
+                deferred = True
+
+            yield True
+
+        except ShownException as error:
+            logger.exception("Interaction failed")
+            await _respond(
+                interaction,
+                edit_original=deferred,
+                ephemeral=ephemeral,
+                **error.data,
             )
 
-            if is_empty:
-                await interaction.edit_original_response(content="Done.")
+        except Exception:
+            logger.exception("Interaction failed")
+            await _respond(
+                interaction,
+                edit_original=deferred,
+                ephemeral=ephemeral,
+                content="Unexpected error.",
+            )
+            raise
 
-        except discord.NotFound:
-            pass
+        else:
+            if deferred:
+                await _complete_if_empty(interaction)
+
+
+async def _respond(
+    interaction: discord.Interaction,
+    *,
+    edit_original: bool = False,
+    ephemeral: bool,
+    **message: Any,
+) -> None:
+    if edit_original:
+        await interaction.edit_original_response(**message)
+    elif not interaction.response.is_done():
+        await interaction.response.send_message(
+            ephemeral=ephemeral,
+            **message,
+        )
+    else:
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **message,
+        )
+
+
+async def _complete_if_empty(
+    interaction: discord.Interaction,
+) -> None:
+    try:
+        message = await interaction.original_response()
+    except discord.NotFound:
+        return
+
+    if not any(
+        (
+            message.content,
+            message.embeds,
+            message.attachments,
+            message.components,
+        )
+    ):
+        await interaction.edit_original_response(content="Done.")
 
 
 def get_caller_logger(depth: int = 1) -> logging.Logger:
@@ -90,7 +119,8 @@ def get_caller_logger(depth: int = 1) -> logging.Logger:
 
             caller = caller.f_back
 
-        module_name = caller.f_globals.get("__name__", "__main__")
-        return logging.getLogger(module_name)
+        return logging.getLogger(
+            caller.f_globals.get("__name__", "__main__")
+        )
     finally:
         del frame

@@ -1,7 +1,7 @@
 import discord
 from discord import CheckboxGroupOption, SelectOption
 
-from helpers.general import processing_response
+from helpers.general import respond
 from models.citizen import Citizenship
 from models.duchy import Duchy
 from models.registration import Registration
@@ -103,7 +103,10 @@ class CitizenApplicationModal(discord.ui.Modal, title=CITIZEN_APPLICATION_MODAL_
         self.add_item(self.checks)
 
     async def on_submit(self, interaction: discord.Interaction):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             registration = self.registration
 
             if len(self.checks.component.values) != 2:

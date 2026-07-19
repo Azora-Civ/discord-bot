@@ -16,36 +16,32 @@ class PermissionService:
 
     async def update_actual_user_permission(self, permission: Permission):
         old = await self.db.permissions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        kind = await _compare_and_update(old, permission, self.db.permissions)
-        if kind is not None:
-            await self.on_permission_changed.emit(
-                PermissionChangedEvent(
-                    kind=kind,
-                    permission=permission,
-                    previous=old,
-                    source="actual_permission_updated",
-                )
-            )
+        await self._update_permission(
+            old,
+            permission,
+            self.db.permissions,
+            source="actual_permission_updated",
+        )
 
     async def update_user_permission(self, permission: Permission):
         old = await self.db.permission_exceptions.find_by_ign_and_namelayer(permission.ign, permission.namelayer)
-        kind = await _compare_and_update(old, permission, self.db.permission_exceptions)
-        if kind is not None:
-            await self.on_permission_changed.emit(
-                PermissionChangedEvent(
-                    kind=kind,
-                    permission=permission,
-                    previous=old,
-                    source="permission_exception_updated",
-                )
-            )
+        await self._update_permission(
+            old,
+            permission,
+            self.db.permission_exceptions,
+            source="permission_exception_updated",
+        )
 
     async def update_group_permission(self, permission: GroupPermission):
         old = await self.db.group_permissions.find_by_role_id_and_namelayer(
             permission.role_id,
             permission.namelayer,
         )
-        kind = await _compare_and_update(old, permission, self.db.group_permissions)
+        kind = await _compare_and_update(
+            old,
+            permission,
+            self.db.group_permissions,
+        )
         if kind is not None:
             await self.on_group_permission_changed.emit(
                 GroupPermissionChangedEvent(
@@ -55,6 +51,27 @@ class PermissionService:
                     source="group_permission_updated",
                 )
             )
+
+    async def _update_permission(
+        self,
+        old: Permission | None,
+        permission: Permission,
+        repo,
+        *,
+        source: str,
+    ) -> None:
+        kind = await _compare_and_update(old, permission, repo)
+        if kind is None:
+            return
+
+        await self.on_permission_changed.emit(
+            PermissionChangedEvent(
+                kind=kind,
+                permission=permission,
+                previous=old,
+                source=source,
+            )
+        )
 
     async def get_user_permissions(
         self,

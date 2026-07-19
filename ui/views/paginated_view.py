@@ -1,5 +1,7 @@
 import discord
 
+from helpers.general import respond
+
 
 class PaginationView(discord.ui.View):
     def __init__(
@@ -73,8 +75,12 @@ class PaginationView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        self.current_page -= 1
-        await self._show_page(interaction)
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
+            self.current_page -= 1
+            await self._show_page(interaction)
 
     @discord.ui.button(
         label="1/1",
@@ -97,5 +103,9 @@ class PaginationView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        self.current_page += 1
-        await self._show_page(interaction)
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
+            self.current_page += 1
+            await self._show_page(interaction)

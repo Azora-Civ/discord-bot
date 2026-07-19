@@ -1,5 +1,6 @@
 import discord
 
+from helpers.general import respond
 from models.citizen import Citizen
 from ui.modals.citizen_edit_modal import CitizenEditModal
 
@@ -18,10 +19,14 @@ class CitizenManagementView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        if not await _is_mod(interaction):
-            return
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        await interaction.response.send_modal(CitizenEditModal(self.citizen))
+            if not await _is_mod(interaction):
+                return
+
+            await interaction.response.send_modal(CitizenEditModal(self.citizen))
 
     @discord.ui.button(
         label="Remove",
@@ -32,14 +37,18 @@ class CitizenManagementView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        if not await _is_mod(interaction):
-            return
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        await interaction.response.edit_message(
-            content=f"Remove citizen `{self.citizen.in_game_name}`?",
-            embed=None,
-            view=CitizenRemoveConfirmView(self.citizen),
-        )
+            if not await _is_mod(interaction):
+                return
+
+            await interaction.response.edit_message(
+                content=f"Remove citizen `{self.citizen.in_game_name}`?",
+                embed=None,
+                view=CitizenRemoveConfirmView(self.citizen),
+            )
 
 
 class CitizenRemoveConfirmView(discord.ui.View):
@@ -56,16 +65,20 @@ class CitizenRemoveConfirmView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        if not await _is_mod(interaction):
-            return
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        service = interaction.client.citizen_service
-        await service.remove_citizen(self.citizen.id)
-        await interaction.response.edit_message(
-            content=f"Removed citizen `{self.citizen.in_game_name}`.",
-            embed=None,
-            view=None,
-        )
+            if not await _is_mod(interaction):
+                return
+
+            service = interaction.client.citizen_service
+            await service.remove_citizen(self.citizen.id)
+            await interaction.response.edit_message(
+                content=f"Removed citizen `{self.citizen.in_game_name}`.",
+                embed=None,
+                view=None,
+            )
 
     @discord.ui.button(
         label="Cancel",
@@ -76,16 +89,20 @@ class CitizenRemoveConfirmView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        if not await _is_mod(interaction):
-            return
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
 
-        from ui.panels.citizens_panel import citizen_panel
+            if not await _is_mod(interaction):
+                return
 
-        await interaction.response.edit_message(
-            content=None,
-            embed=citizen_panel(self.citizen),
-            view=CitizenManagementView(self.citizen),
-        )
+            from ui.panels.citizens_panel import citizen_panel
+
+            await interaction.response.edit_message(
+                content=None,
+                embed=citizen_panel(self.citizen),
+                view=CitizenManagementView(self.citizen),
+            )
 
 
 async def _is_mod(interaction: discord.Interaction) -> bool:

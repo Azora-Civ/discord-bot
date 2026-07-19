@@ -1,7 +1,7 @@
 import discord
 
 from config import CITIZEN_MOD_ROLE_ID_KEY
-from helpers.general import processing_response
+from helpers.general import respond
 from models.ShownException import BadRequestException, BadStateException
 from ui.modals.citizen_application_modal import citizen_application_modal
 
@@ -20,7 +20,10 @@ class RegistrationResponseView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if not await _is_mod(interaction):
                 raise BadRequestException("You are not permitted to accept the registration.")
 
@@ -38,7 +41,10 @@ class RegistrationResponseView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        async with processing_response(interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
             if not await _is_mod(interaction):
                 raise BadRequestException("You are not permitted to reject the registration.")
 
@@ -52,7 +58,10 @@ class RegistrationResponseView(discord.ui.View):
         custom_id="registration_response_view:edit_citizen",
     )
     async def edit_citizen(self, interaction: discord.Interaction, button: discord.ui.Button):
-        async with processing_response(interaction, show_processing=False):
+        async with respond(interaction, defer=False) as should_process:
+            if not should_process:
+                return
+
             registration = await _get_registration(interaction)
             if not (
                 registration.poster_id == interaction.user.id
