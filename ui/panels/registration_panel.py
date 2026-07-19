@@ -1,58 +1,28 @@
-import discord
+import json
 
-from models.registration import Registration, RegistrationStatus
-from ui.views.registration_response_view import RegistrationResponseView
+from models.embed_config import EmbedConfig
+from repositories.key_values import KeyValueRepository
+from ui.views.registration_view import RegistrationView
+import config as cfg
 
+async def get_embed_config():
+    embed_config_json = await KeyValueRepository().get(key=cfg.REGISTRATION_EMBED_KEY)
 
-def registration_panel(registration: Registration):
-    status = str(registration.status).title()
-    citizenship = str(registration.citizenship_type).title()
+    if embed_config_json:
+        embed_config = EmbedConfig(**json.loads(embed_config_json))
+    else:
+        embed_config = EmbedConfig(
+            title="Azora Registration",
+            description="Register as a citizen or resident.",
+            colour=0x3498DB
+        )
+    return embed_config
 
-    snitch_hit = "✅" if registration.snitch_hit else "❌"
+async def registration_panel():
+    embed_config = await get_embed_config()
+    embed = embed_config.create_embed()
 
-    embed = discord.Embed(
-        title="📋 New Registration Request",
-        description=f"Submitted by <@{registration.user_id}>",
-        color=discord.Color.gold(),
-    )
-
-    embed.add_field(
-        name="Applicant",
-        value=(
-            f"**User:** <@{registration.user_id}>\n"
-            f"**In-game name:** {registration.in_game_name}\n"
-            f"**Requested status:** {citizenship}"
-        ),
-        inline=False,
-    )
-
-    embed.add_field(
-        name="What goals/skills do you bring to Azora?",
-        value=registration.about or "No answer provided.",
-        inline=False,
-    )
-
-    embed.add_field(
-        name="Will you follow the server rules?",
-        value=registration.follow_rules or "No answer provided.",
-        inline=False,
-    )
-
-    embed.add_field(
-        name="Do you understand you'll start at Level 1?",
-        value=registration.citizenry or "No answer provided.",
-        inline=False,
-    )
-
-    embed.add_field(
-        name="Review Info",
-        value=(f"**Status:** {status}\n**Hit a snitch:** {snitch_hit}"),
-        inline=False,
-    )
-
-    response = {"embed": embed}
-
-    if registration.status == RegistrationStatus.PENDING:
-        response["view"] = RegistrationResponseView()
-
-    return response
+    return {
+        "embed": embed,
+        "view": RegistrationView()
+    }

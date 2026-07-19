@@ -1,8 +1,13 @@
-import discord
-from repositories.registrations import RegistrationRepository
-from ui.modals.registration_modal import RegistrationModal
 from typing import TYPE_CHECKING
+
+import discord
+
+from config import CITIZEN_MOD_ROLE_ID_KEY
 from helpers.general import processing_response
+from models.ShownException import BadStateException, BadRequestException
+from repositories.key_values import KeyValueRepository
+from repositories.registrations import RegistrationRepository
+from ui.modals.citizen_application_modal import citizen_application_modal
 
 if TYPE_CHECKING:
     from services.registration_service import RegistrationService
@@ -23,9 +28,12 @@ class RegistrationResponseView(discord.ui.View):
         button: discord.ui.Button,
     ):
         async with processing_response(interaction):
+            if not await _is_mod(interaction):
+                raise BadRequestException("You are not permitted to accept the registration.")
+
             registration = await _get_registration(interaction)
             service: RegistrationService = interaction.client.get_cog("RegistrationCog").service
-            await service.accept_registration(interaction, registration, False)
+            await service.accept_registration(registration, False)
 
     @discord.ui.button(
         label="Reject",
@@ -38,19 +46,47 @@ class RegistrationResponseView(discord.ui.View):
         button: discord.ui.Button,
     ):
         async with processing_response(interaction):
+            if not await _is_mod(interaction):
+                raise BadRequestException("You are not permitted to reject the registration.")
+
             registration = await _get_registration(interaction)
             service: RegistrationService = interaction.client.get_cog("RegistrationCog").service
-            await service.reject_registration(interaction, registration)
+            await service.reject_registration(registration)
 
-    async def on_error(self, interaction, error, item):
-        import traceback
+    @discord.ui.button(
+        label="Edit",
+        style=discord.ButtonStyle.secondary,
+        custom_id="registration_response_view:edit_citizen",
+    )
+    async def edit_citizen(self, interaction: discord.Interaction, button: discord.ui.Button):
+        async with processing_response(interaction, show_processing=False):
+            registration = await _get_registration(interaction)
+            if not (
+                registration.poster_id == interaction.user.id
+                or await _is_mod(interaction)
+            ):
+                raise BadStateException("You are not permitted to edit the registration.")
 
-        print(f"Error in {item.custom_id}")
-        traceback.print_exception(type(error), error, error.__traceback__)
+            await interaction.response.send_modal(
+                await citizen_application_modal(registration)
+            )
 
 
 async def _get_registration(interaction: discord.Interaction):
     thread_id = interaction.channel_id
     repo = RegistrationRepository()
-    registration = await repo.get_by_thread_id(thread_id)
+    registration = await repo.fetch_by_thread_id(thread_id)
+    if registration is None:
+        raise BadStateException("Registration not found")
     return registration
+
+async def _is_mod(interaction: discord.Interaction):
+    user = interaction.user
+    if user.guild_permissions.administrator:
+        return True
+
+    mod_role_id = KeyValueRepository().get_int(key=CITIZEN_MOD_ROLE_ID_KEY)
+    if mod_role_id is None:
+        return False
+    return any(role.id == mod_role_id for role in user.roles)
+

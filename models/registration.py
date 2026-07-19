@@ -1,8 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Optional
 
-from models.person import Citizenship
+from models.citizen import Citizenship
 
 
 class RegistrationStatus(StrEnum):
@@ -10,19 +9,27 @@ class RegistrationStatus(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
 
+@dataclass
+class RegistrationData:
+    about: str = ""
 
-@dataclass(slots=True, kw_only=True)
-class Registration:
-    user_id: int
-    citizenship_type: Citizenship
-    in_game_name: str
-    about: str
-    follow_rules: str
-    citizenry: str
+    snitch_hit: bool = False
 
-    id: Optional[int] = None
     thread_id: int | None = None
     message_id: int | None = None
-    snitch_hit: bool = False
+
+    duchy_name: str = ""
+    duchy_mention: str = ""
+    duchy_emoji: str = ""
+
+
+@dataclass
+class Registration:
+    poster_id: int
+    is_for_self: bool
+    citizenship_type: Citizenship = Citizenship.CITIZEN
+    in_game_name: str = ""
+    data: RegistrationData = field(default_factory=RegistrationData)
+
+    id: int | None = None
     status: RegistrationStatus = RegistrationStatus.PENDING
-    created_at: Optional[str] = None

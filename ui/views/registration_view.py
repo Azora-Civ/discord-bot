@@ -1,7 +1,11 @@
+
 import discord
 
-from models.person import Citizenship
-from ui.modals.registration_modal import RegistrationModal
+from helpers.general import processing_response
+from models.registration import Registration
+from models.ShownException import BadRequestException
+from repositories.citizens import CitizenRepository
+from ui.modals.citizen_application_modal import citizen_application_modal
 
 
 class RegistrationView(discord.ui.View):
@@ -9,7 +13,7 @@ class RegistrationView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Register as Citizen",
+        label="Apply for Citizenship",
         style=discord.ButtonStyle.primary,
         custom_id="registration_view:register_citizen",
     )
@@ -18,28 +22,43 @@ class RegistrationView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        try:
+        async with processing_response(interaction, show_processing=False):
+            citizen = await CitizenRepository().fetch_by_user_id(interaction.user.id)
+            if citizen is not None:
+                raise BadRequestException("You are already registered!")
+
             await interaction.response.send_modal(
-                RegistrationModal(citizenship=Citizenship.CITIZEN)
+                await citizen_application_modal(
+                    Registration(
+                        poster_id=interaction.user.id,
+                        is_for_self=True,
+                    )
+                )
             )
-        except Exception as e:
-            print(type(e), e)
-            raise
+
 
     @discord.ui.button(
-        label="Register as Resident",
-        style=discord.ButtonStyle.primary,
-        custom_id="registration_view:register_resident",
+        label="Apply for Someone Else",
+        style=discord.ButtonStyle.secondary,
+        custom_id="registration_view:register_citizen_other",
     )
-    async def register_resident(
+    async def register_citizen_other(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        try:
+        async with processing_response(interaction, show_processing=False):
+            citizen = await CitizenRepository().fetch_by_user_id(interaction.user.id)
+            if citizen is None:
+                raise BadRequestException(
+                    "You can only apply for Citizenship for someone else if you are a citizen!"
+                )
+
             await interaction.response.send_modal(
-                RegistrationModal(citizenship=Citizenship.RESIDENT)
+                await citizen_application_modal(
+                    Registration(
+                        poster_id=interaction.user.id,
+                        is_for_self=False,
+                    )
+                )
             )
-        except Exception as e:
-            print(type(e), e)
-            raise

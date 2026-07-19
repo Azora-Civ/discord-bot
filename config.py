@@ -24,12 +24,18 @@ LOG_FILE = os.getenv("LOG_FILE") or "bot.log"
 LOG_PATH = Path(os.getenv("LOG_PATH") or "logs")
 
 
+# Citizen
+CITIZEN_MOD_ROLE_ID_KEY = "citizen.mod_role_id"
+
 # Registration
-REGISTRATION_ADMIN_ROLE_ID_KEY = "registration.admin_role_id"
+REGISTRATION_EMBED_KEY = "registration.embed"
+REGISTRATION_DUCHY_KEY = "registration.duchy"
 REGISTRATION_FORUM_ID_KEY = "registration.forum_id"
+
 REGISTRATION_SNITCH_CHANNEL_ID_KEY = "registration.snitch_channel_id"
 REGISTRATION_SNITCH_NAME_KEY = "registration.snitch_name"
 REGISTRATION_SNITCH_GROUP_KEY = "registration.snitch_group"
+
 REGISTRATION_RESIDENT_ROLE_ID_KEY = "registration.resident_role_id"
 REGISTRATION_CITIZEN_ROLE_ID_KEY = "registration.citizen_role_id"
 REGISTRATION_MEMBER_ROLE_ID_KEY = "registration.member_role_id"

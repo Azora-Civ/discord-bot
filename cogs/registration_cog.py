@@ -1,19 +1,19 @@
 import re
 
 import discord
-from discord import User, app_commands
+from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
-from helpers.discord_formatting import timestamp
 from helpers.general import processing_response
-from models.person import Citizenship, Person
 from repositories.key_values import KeyValueRepository
-from repositories.people import PeopleRepository
 from services.registration_service import RegistrationService
+from ui.modals.registration_duchy_modal import registration_duchy_modal
+from ui.modals.registration_embed_modal import RegistrationEmbedModal
+from ui.panels.registration_panel import get_embed_config, registration_panel
+from ui.views.registration_force_accept import RegistrationForceAcceptView
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
-
 
 class RegistrationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -34,28 +34,42 @@ class RegistrationCog(commands.Cog):
             rf"`\[{re.escape(snitch_group)}\]`\s+\*\*(.+?)\*\*\s+is at {re.escape(snitch)}"
         )
 
-    @app_commands.command(
-        name="registration-panel", description="Setup the registration panel here."
+    root_group = app_commands.Group(
+        name="registration",
+        description="Collection of commands used to configure citizen registration."
     )
-    @app_commands.checks.has_permissions(administrator=True)
-    async def registration_panel(self, interaction: discord.Interaction):
-        async with processing_response(interaction):
-            embed = discord.Embed(
-                title="Azora Registration",
-                description="[ADMIN] Register as a citizen or resident.",
-                color=discord.Color.blue(),
-            )
 
-            await interaction.channel.send(
-                embed=embed,
-                view=RegistrationView(),
-            )
+    @root_group.command(
+        name="edit-panel",
+        description="[ADMIN] Edit the registration panel.",
+    )
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def edit_panel(self, interaction: discord.Interaction):
+        embed_config = await get_embed_config()
+
+        await interaction.response.send_modal(
+            RegistrationEmbedModal(embed_config)
+        )
+
+
+    @root_group.command(
+        name="panel", description="[ADMIN] Setup the registration panel here."
+    )
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def panel(self, interaction: discord.Interaction):
+        async with processing_response(interaction):
+            panel = await registration_panel()
+            await interaction.channel.send(**panel)
             await interaction.edit_original_response(content="Registration panel posted.")
 
-    @app_commands.command(
-        name="registration-set-channel",
+
+    @root_group.command(
+        name="set-channel",
         description="[ADMIN] Setup where registration creates new threads for new registrations.",
     )
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_channel(
         self, interaction: discord.Interaction, channel: discord.ForumChannel
@@ -69,10 +83,12 @@ class RegistrationCog(commands.Cog):
                 )
             )
 
-    @app_commands.command(
-        name="registration-set-snitch",
+
+    @root_group.command(
+        name="set-snitch",
         description="[ADMIN] Setup the snitch to listen for and where to listen.",
     )
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_snitch(
         self,
@@ -97,8 +113,9 @@ class RegistrationCog(commands.Cog):
                 )
             )
 
-    @app_commands.command(
-        name="registration-set-roles",
+
+    @root_group.command(
+        name="set-roles",
         description="[ADMIN] Setup roles given when registrations are accepted.",
     )
     @app_commands.describe(
@@ -106,6 +123,7 @@ class RegistrationCog(commands.Cog):
         citizen_role="Role given to citizens. Leave empty to clear.",
         member_role="Role given to both residents and citizens. Leave empty to clear.",
     )
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def set_registration_roles(
         self,
@@ -138,23 +156,17 @@ class RegistrationCog(commands.Cog):
                 )
             )
 
-    @app_commands.command(
-        name="citizenship",
-        description="Show information about yourself or another citizen/resident.",
+    @root_group.command(
+        name="set-duchies",
+        description="[ADMIN] Setup the duchies to consider for registration.",
     )
-    async def citizenship(
-        self,
-        interaction: discord.Interaction,
-        user: discord.User | None,
-    ):
-        async with processing_response(interaction, ephemeral=False):
-            user: User = user or interaction.user
-            p_repo = PeopleRepository()
-            person = await p_repo.get_by_user_id(user.id)
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def set_duchies(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            await registration_duchy_modal()
+        )
 
-            embed = get_person_embed(user, person)
-
-            await interaction.edit_original_response(content=None, embed=embed)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -167,40 +179,7 @@ class RegistrationCog(commands.Cog):
         match = self.snitch_regex.search(message.content)
         if match:
             ign = match.group(1)
-            await self.service.hit_registration_snitch(self.bot, ign)
-
-
-def get_person_embed(user: discord.User | discord.Member, person: Person | None) -> discord.Embed:
-    if person is None:
-        embed = discord.Embed(
-            title="Person Lookup",
-            description=f"{user.mention} is not registered as a citizen or resident.",
-            color=discord.Color.red(),
-        )
-        embed.add_field(name="User", value=user.mention, inline=False)
-        embed.add_field(name="Citizenship", value="Not registered", inline=True)
-        return embed
-
-    embed = discord.Embed(
-        title="Person Lookup",
-        description=f"Information for {user.mention}",
-        color=discord.Color.green()
-        if person.citizenship == Citizenship.CITIZEN
-        else discord.Color.blue(),
-    )
-
-    embed.add_field(name="User", value=user.mention, inline=False)
-    embed.add_field(name="In-game name", value=person.in_game_name, inline=True)
-    embed.add_field(name="Citizenship", value=str(person.citizenship), inline=True)
-
-    embed.add_field(
-        name="Joined",
-        value=timestamp(person.created_at),
-        inline=False,
-    )
-
-    return embed
-
+            await self.service.hit_registration_snitch(ign)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
