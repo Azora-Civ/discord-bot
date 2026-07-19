@@ -2,11 +2,10 @@ import inspect
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import Any
 
 import discord
 
-from main import RoyalSteward
 from models.ShownException import ShownException
 
 
@@ -18,8 +17,11 @@ async def respond(
     ephemeral: bool = True,
     logger: logging.Logger | None = None,
 ) -> AsyncIterator[bool]:
-    bot = cast(RoyalSteward, interaction.client)
+    bot = interaction.client
     logger = logger or get_caller_logger(depth=2)
+
+    if not hasattr(bot, "interaction_lease"):
+        raise RuntimeError("Interaction client does not support interaction leases.")
 
     with bot.interaction_lease() as accepted:
         if not accepted:
@@ -44,7 +46,7 @@ async def respond(
             yield True
 
         except ShownException as error:
-            logger.exception("Interaction failed")
+            logger.info("Interaction returned user-facing error: %s", error)
             await _respond(
                 interaction,
                 edit_original=deferred,
@@ -119,8 +121,6 @@ def get_caller_logger(depth: int = 1) -> logging.Logger:
 
             caller = caller.f_back
 
-        return logging.getLogger(
-            caller.f_globals.get("__name__", "__main__")
-        )
+        return logging.getLogger(caller.f_globals.get("__name__", "__main__"))
     finally:
         del frame

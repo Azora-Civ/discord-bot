@@ -69,11 +69,7 @@ async def sync_citizenship_roles(
         for role_id in desired_role_ids
         if (role := member.guild.get_role(role_id)) is not None and role not in member.roles
     ]
-    roles_to_remove = [
-        role
-        for role in member.roles
-        if role.id in managed_role_ids and role.id not in desired_role_ids
-    ]
+    roles_to_remove = [role for role in member.roles if role.id in managed_role_ids and role.id not in desired_role_ids]
 
     if roles_to_remove:
         await member.remove_roles(

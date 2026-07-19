@@ -23,6 +23,7 @@ async def get_members(client) -> Sequence[Member]:
     guild = await get_guild(client)
     return guild.members
 
+
 async def get_guild_roles(client, user_ids: list[int]) -> Sequence[Role]:
     guild = await get_guild(client)
     members = await guild.query_members(
@@ -32,6 +33,7 @@ async def get_guild_roles(client, user_ids: list[int]) -> Sequence[Role]:
     roles = set(role for member in members for role in member.roles)
 
     return list(roles)
+
 
 async def get_message(client: Bot, channel_id: int, message_id: int) -> Message | None:
     try:

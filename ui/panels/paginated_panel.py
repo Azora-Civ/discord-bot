@@ -1,4 +1,3 @@
-
 import discord
 
 from ui.views.paginated_view import PaginationView
@@ -15,7 +14,4 @@ def paginated_panel(embeds: list[discord.Embed]) -> dict[str, object]:
 
     pv = PaginationView(embeds)
 
-    return {
-        "embed": embeds[0],
-        "view": pv
-    }
+    return {"embed": embeds[0], "view": pv}

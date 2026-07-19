@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import asdict
 
 import discord
@@ -6,6 +7,8 @@ import discord
 import config as cfg
 from helpers.general import respond
 from models.embed_config import EmbedConfig
+
+HEX_COLOUR_RE = re.compile(r"^#?[0-9a-fA-F]{6}$")
 
 
 class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
@@ -38,11 +41,7 @@ class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
         max_length=2048,
     )
 
-    def __init__(
-        self,
-        db,
-        config: EmbedConfig
-    ):
+    def __init__(self, db, config: EmbedConfig):
         super().__init__()
 
         self.db = db
@@ -59,15 +58,15 @@ class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
             if not should_process:
                 return
 
-            try:
-                colour = int(self.colour.value.removeprefix("#"), 16)
-            except ValueError:
+            colour_text = self.colour.value.strip()
+            if not HEX_COLOUR_RE.match(colour_text):
                 await interaction.response.send_message(
                     "The colour must look like `#5865F2`.",
                     ephemeral=True,
                 )
                 return
 
+            colour = int(colour_text.removeprefix("#"), 16)
             thumbnail_raw, separator, image_raw = self.image_urls.value.partition("|")
 
             thumbnail_url = thumbnail_raw.strip() or None

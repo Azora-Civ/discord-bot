@@ -6,17 +6,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _env_int(name: str, default: int | None = None, *, minimum: int | None = None) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        if default is None:
+            raise RuntimeError(f"Missing required environment variable: {name}")
+        value = default
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError as exc:
+            raise RuntimeError(f"Environment variable {name} must be an integer.") from exc
+
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f"Environment variable {name} must be at least {minimum}.")
+
+    return value
+
+
 # General
-TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("GUILD_ID"))
+TOKEN = _required_env("DISCORD_TOKEN")
+GUILD_ID = _env_int("GUILD_ID")
 GUILD = discord.Object(id=GUILD_ID)
-KIRA_USER_ID = int(os.getenv("KIRA_USER_ID") or 952325487663939645)
+KIRA_USER_ID = _env_int("KIRA_USER_ID", 952325487663939645)
 
 
 # DB
 DB_PATH = os.getenv("DB_PATH") or "azora.db"
 DB_BACKUP_DIR = Path(os.getenv("DB_BACKUP_DIR") or "backups")
-DB_MAX_BACKUPS = os.getenv("DB_MAX_BACKUPS") or 10
+DB_MAX_BACKUPS = _env_int("DB_MAX_BACKUPS", 10, minimum=0)
 
 
 # Logging

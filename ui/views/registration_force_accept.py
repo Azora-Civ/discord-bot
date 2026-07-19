@@ -1,6 +1,7 @@
 import discord
 
 from helpers.general import respond
+from models.ShownException import BadStateException
 
 
 class RegistrationForceAcceptView(discord.ui.View):
@@ -9,6 +10,7 @@ class RegistrationForceAcceptView(discord.ui.View):
 
     @discord.ui.button(
         label="Accept Anyway...",
+        emoji="⚠️",
         style=discord.ButtonStyle.red,
         custom_id="registration_force_accept_view:accept_anyway",
     )
@@ -23,11 +25,17 @@ class RegistrationForceAcceptView(discord.ui.View):
 
             button.disabled = True
 
-            registration = await interaction.client.db.registrations.fetch_by_thread_id(
-                interaction.channel_id
-            )
+            registration = await interaction.client.db.registrations.fetch_by_thread_id(interaction.channel_id)
 
-            assert registration is not None, "Couldn't find registration"
+            if registration is None:
+                raise BadStateException("This registration is no longer pending.")
 
             cog = interaction.client.get_cog("RegistrationCog")
+            if cog is None:
+                raise BadStateException("Registration commands are not loaded.")
+
+            await interaction.edit_original_response(
+                content="Accepting registration...",
+                view=self,
+            )
             await cog.accept_registration(registration, True)

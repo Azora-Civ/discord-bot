@@ -27,9 +27,7 @@ class PaginationView(discord.ui.View):
         self.previous_button.disabled = self.current_page == 0
         self.next_button.disabled = self.current_page == len(self.pages) - 1
 
-        self.page_button.label = (
-            f"{self.current_page + 1}/{len(self.pages)}"
-        )
+        self.page_button.label = f"{self.current_page + 1}/{len(self.pages)}"
 
     async def _show_page(
         self,
@@ -79,7 +77,7 @@ class PaginationView(discord.ui.View):
             if not should_process:
                 return
 
-            self.current_page -= 1
+            self.current_page = max(0, self.current_page - 1)
             await self._show_page(interaction)
 
     @discord.ui.button(
@@ -107,5 +105,5 @@ class PaginationView(discord.ui.View):
             if not should_process:
                 return
 
-            self.current_page += 1
+            self.current_page = min(len(self.pages) - 1, self.current_page + 1)
             await self._show_page(interaction)

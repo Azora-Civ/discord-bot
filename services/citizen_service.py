@@ -9,6 +9,7 @@ from services.events import CitizenChangedEvent, CitizenChangeKind, EventHook
 if TYPE_CHECKING:
     from database import Database
 
+
 class CitizenService:
     def __init__(self, db: "Database"):
         self.db = db
@@ -46,19 +47,11 @@ class CitizenService:
 
         if ign is not None and ign.strip():
             needle = ign.strip().casefold()
-            citizens = [
-                citizen
-                for citizen in citizens
-                if needle in citizen.in_game_name.casefold()
-            ]
+            citizens = [citizen for citizen in citizens if needle in citizen.in_game_name.casefold()]
 
         if last_online_days is not None:
             cutoff = datetime.now(UTC) - timedelta(days=last_online_days)
-            citizens = [
-                citizen
-                for citizen in citizens
-                if _aware(citizen.last_online) >= cutoff
-            ]
+            citizens = [citizen for citizen in citizens if _aware(citizen.last_online) >= cutoff]
 
         return citizens
 
@@ -158,11 +151,7 @@ class CitizenService:
 
         citizens = await self.repo.fetch_all()
         cutoff = datetime.now(UTC) - timedelta(days=active_days)
-        active = [
-            citizen
-            for citizen in citizens
-            if _aware(citizen.last_online) >= cutoff
-        ]
+        active = [citizen for citizen in citizens if _aware(citizen.last_online) >= cutoff]
         return len(citizens), len(active)
 
 

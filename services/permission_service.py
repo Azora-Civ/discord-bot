@@ -121,11 +121,7 @@ class PermissionService:
     ) -> list[Permission]:
         role_member_igns_by_id = role_member_igns_by_id or {}
         role_sources_by_id = role_sources_by_id or {}
-        group_permissions = [
-            gp
-            for gp in await self.db.group_permissions.fetch_all()
-            if gp.namelayer == namelayer
-        ]
+        group_permissions = [gp for gp in await self.db.group_permissions.fetch_all() if gp.namelayer == namelayer]
 
         perm_map: dict[str, Permission] = {}
 
@@ -217,9 +213,7 @@ async def _to_commands(targets: dict[str, Permission], actuals: dict[str, Permis
     return commands
 
 
-async def _to_command(
-    perm: Permission, actual_level: PermissionLevel, target_level: PermissionLevel
-) -> str | None:
+async def _to_command(perm: Permission, actual_level: PermissionLevel, target_level: PermissionLevel) -> str | None:
     if target_level == actual_level:
         return None
 

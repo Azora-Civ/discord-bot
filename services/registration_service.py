@@ -17,12 +17,17 @@ class RegistrationService:
         self.on_registration_changed = EventHook[RegistrationChangedEvent]("on_registration_changed")
 
     async def submit_citizen_application(self, registration: Registration) -> Registration:
+        registration.in_game_name = registration.in_game_name.strip()
+        registration.data.about = registration.data.about.strip()
+
+        if not registration.in_game_name:
+            raise BadRequestException("In-game name cannot be empty.")
+
+        if not registration.data.duchy_name:
+            raise BadRequestException("Choose a duchy/city preference.")
+
         # Fetch the stored version so we can detect changes.
-        existing = (
-            await self.db.registrations.fetch_by_id(registration.id)
-            if registration.id is not None
-            else None
-        )
+        existing = await self.db.registrations.fetch_by_id(registration.id) if registration.id is not None else None
 
         # The Discord user must not already be a citizen.
         if registration.is_for_self:
@@ -33,32 +38,23 @@ class RegistrationService:
         # The requested IGN must not belong to any citizen.
         citizen = await self.db.citizens.fetch_by_ign(registration.in_game_name)
         if citizen is not None:
-            raise BadRequestException(
-                "That in-game name already belongs to a citizen!"
-            )
+            raise BadRequestException("That in-game name already belongs to a citizen!")
 
         # The Discord user must not have another registration.
         if registration.is_for_self:
             conflict = await self.db.registrations.fetch_by_user_id(registration.poster_id)
 
             if conflict is not None and conflict.id != registration.id:
-                raise BadRequestException(
-                    "You already have a citizen application!"
-                )
+                raise BadRequestException("You already have a citizen application!")
 
         # The requested IGN must not be used by another registration.
         conflict = await self.db.registrations.fetch_by_ign(registration.in_game_name)
 
         if conflict is not None and conflict.id != registration.id:
-            raise BadRequestException(
-                "That in-game name is already used in another application!"
-            )
+            raise BadRequestException("That in-game name is already used in another application!")
 
         # A snitch hit for the old IGN says nothing about the new IGN.
-        if (
-            existing is not None
-            and existing.in_game_name != registration.in_game_name
-        ):
+        if existing is not None and existing.in_game_name != registration.in_game_name:
             registration.data.snitch_hit = False
 
         await self.save_registration(registration, source="application_submitted")
@@ -73,11 +69,7 @@ class RegistrationService:
     ) -> Registration:
         is_new = registration.id is None
         keep = registration.status == RegistrationStatus.PENDING
-        previous = (
-            await self.db.registrations.fetch_by_id(registration.id)
-            if registration.id is not None
-            else None
-        )
+        previous = await self.db.registrations.fetch_by_id(registration.id) if registration.id is not None else None
         kind: ChangeKind | None = None
 
         if is_new and keep:
@@ -110,9 +102,7 @@ class RegistrationService:
         await self.save_registration(registration, source="registration_rejected")
         return registration
 
-    async def accept_registration(
-        self, registration: Registration, force: bool
-    ) -> Citizen | None:
+    async def accept_registration(self, registration: Registration, force: bool) -> Citizen | None:
         if registration.status == RegistrationStatus.ACCEPTED:
             return None
 
@@ -121,6 +111,12 @@ class RegistrationService:
                 "Snitch has not yet been hit for this person! Therefore, the in-game "
                 f"'{registration.in_game_name}' is unconfirmed."
             )
+
+        if await self.db.citizens.fetch_by_ign(registration.in_game_name) is not None:
+            raise BadRequestException("That in-game name already belongs to a citizen!")
+
+        if registration.is_for_self and await self.db.citizens.fetch_by_user_id(registration.poster_id):
+            raise BadRequestException("You are already a citizen!")
 
         citizen = Citizen(
             user_id=registration.poster_id if registration.is_for_self else None,

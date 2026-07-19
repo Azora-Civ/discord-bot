@@ -17,7 +17,6 @@ from helpers.permissions import (
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
 from models.ShownException import BadStateException
-from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.modals.namelayer_import_modal import NameLayerImportModal
 from ui.panels.permission_commands_panel import permission_command_embeds
 
@@ -64,7 +63,8 @@ class PermissionsCog(commands.Cog):
                 )
 
                 await interaction.edit_original_response(
-                    content=f"Successfully updated permissions for users with {role.mention} to {namelayer} {level}.")
+                    content=f"Successfully updated permissions for users with {role.mention} to {namelayer} {level}."
+                )
                 return
 
             ign, name = await resolve_permission_target(self.bot, ign=ign, user=user)
@@ -78,19 +78,13 @@ class PermissionsCog(commands.Cog):
             )
 
             await interaction.edit_original_response(
-                content=f"Successfully updated permissions for user {name} to {namelayer} {level}.")
+                content=f"Successfully updated permissions for user {name} to {namelayer} {level}."
+            )
 
-
-    @root_group.command(
-        name="import",
-        description="[ADMIN] use the jsmacros bot to fully sync the permissions."
-    )
+    @root_group.command(name="import", description="[ADMIN] use the jsmacros bot to fully sync the permissions.")
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
-    async def import_memberships(
-        self,
-        interaction: discord.Interaction
-    ) -> None:
+    async def import_memberships(self, interaction: discord.Interaction) -> None:
         async with respond(interaction, defer=False) as should_process:
             if not should_process:
                 return
@@ -102,14 +96,10 @@ class PermissionsCog(commands.Cog):
             if not namelayers:
                 raise BadStateException("No NameLayers were found.")
 
-            await interaction.response.send_modal(
-                NameLayerImportModal(namelayers)
-            )
-
+            await interaction.response.send_modal(NameLayerImportModal(namelayers))
 
     @root_group.command(
-        name="fix",
-        description="[ADMIN] List commands needed to align the permissions for a player or namelayer."
+        name="fix", description="[ADMIN] List commands needed to align the permissions for a player or namelayer."
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
@@ -134,16 +124,16 @@ class PermissionsCog(commands.Cog):
 
     @root_group.command(
         name="list",
-        description="[ADMIN] List the perms for a namelayer or player. Shows both what they should/shouldn't have."
+        description="[ADMIN] List the perms for a namelayer or player. Shows both what they should/shouldn't have.",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def list(
-            self,
-            interaction: discord.Interaction,
-            namelayer: str | None = None,
-            user: Member | None = None,
-            ign: str | None = None,
+        self,
+        interaction: discord.Interaction,
+        namelayer: str | None = None,
+        user: Member | None = None,
+        ign: str | None = None,
     ) -> None:
         async with respond(interaction) as should_process:
             if not should_process:
@@ -153,11 +143,9 @@ class PermissionsCog(commands.Cog):
                 namelayer = await corrected_namelayer(self.bot, namelayer)
 
                 await interaction.edit_original_response(
-                    content=None,
-                    **await namelayer_permission_panel(self.bot, namelayer)
+                    content=None, **await namelayer_permission_panel(self.bot, namelayer)
                 )
                 return
-
 
             ign, name = await resolve_permission_target(
                 self.bot,
@@ -165,15 +153,9 @@ class PermissionsCog(commands.Cog):
                 user=interaction.user if user is None else user,
             )
 
-            await interaction.edit_original_response(
-                content=None,
-                **await user_permission_panel(self.bot, ign, name)
-            )
+            await interaction.edit_original_response(content=None, **await user_permission_panel(self.bot, ign, name))
 
-    @root_group.command(
-        name="me",
-        description="List the namelayers you have perms to or alternatively should have."
-    )
+    @root_group.command(name="me", description="List the namelayers you have perms to or alternatively should have.")
     async def mine(self, interaction: discord.Interaction):
         async with respond(interaction) as should_process:
             if not should_process:
@@ -184,7 +166,6 @@ class PermissionsCog(commands.Cog):
                 content=None,
                 **await user_permission_panel(self.bot, ign, interaction.user.mention),
             )
-
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -218,6 +199,7 @@ class PermissionsCog(commands.Cog):
             )
 
             await self.service.update_actual_user_permission(perm)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PermissionsCog(bot), guild=cfg.GUILD)

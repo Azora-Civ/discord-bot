@@ -107,8 +107,8 @@ class PermissionExceptionsRepository:
             return self._from_row(row) if row else None
 
     async def delete_by_namelayers(
-            self,
-            namelayers: list[str],
+        self,
+        namelayers: list[str],
     ) -> int:
         if not namelayers:
             return 0

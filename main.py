@@ -46,11 +46,21 @@ class RoyalSteward(commands.Bot):
         )
 
     def create_task(self, coro, *, name: str | None = None) -> asyncio.Task:
-        """Helper to create and track background tasks"""
+        """Create, track, and log failures from a background task."""
         task = asyncio.create_task(coro, name=name)
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(self._log_background_task_result)
         return task
+
+    def _log_background_task_result(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+
+        try:
+            task.result()
+        except Exception:
+            log.exception("Background task failed: %s", task.get_name())
 
     @contextmanager
     def interaction_lease(self) -> Iterator[bool]:
@@ -99,8 +109,8 @@ class RoyalSteward(commands.Bot):
         try:
             await self.db.close()
             log.info("Database closed successfully")
-        except Exception as e:
-            log.error("Error closing database: %s", e)
+        except Exception:
+            log.exception("Error closing database")
 
         # 4. Let discord.py do its cleanup
         await super().close()
@@ -117,15 +127,13 @@ class RoyalSteward(commands.Bot):
                 self._interactions_idle.wait(),
                 timeout=SHUTDOWN_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning(
-                "Timed out waiting for %d interaction(s) — forcing shutdown",
+                "Timed out waiting for %d interaction(s); forcing shutdown",
                 self._active_interactions,
             )
 
-    # Optional: Add a method to cleanly stop the bot from anywhere
-    async def safe_shutdown(self):
-        """Call this from anywhere to trigger graceful shutdown"""
+    async def safe_shutdown(self) -> None:
         if not self.is_closing():
             asyncio.create_task(self.close())
 
@@ -148,7 +156,7 @@ async def main():
             await bot.start(TOKEN)
     except asyncio.CancelledError:
         log.info("Shutdown requested via cancellation")
-    except Exception as e:
+    except Exception:
         log.error("Unexpected error during bot runtime", exc_info=True)
     finally:
         log.info("Main loop exited")

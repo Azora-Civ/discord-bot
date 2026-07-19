@@ -107,8 +107,8 @@ class PermissionsRepository:
             return self._from_row(row) if row else None
 
     async def delete_by_namelayers(
-            self,
-            namelayers: list[str],
+        self,
+        namelayers: list[str],
     ) -> int:
         if not namelayers:
             return 0
@@ -126,8 +126,8 @@ class PermissionsRepository:
             return cursor.rowcount
 
     async def batch_create(
-            self,
-            permissions: list[Permission],
+        self,
+        permissions: list[Permission],
     ) -> None:
         if not permissions:
             return
