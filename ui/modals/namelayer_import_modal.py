@@ -1,4 +1,3 @@
-from typing import List
 
 import discord
 
@@ -13,7 +12,8 @@ class NameLayerImportModal(
     title="NameLayer membership import",
 ):
     info = discord.ui.TextDisplay(
-        "Copy the text sequence below to clipboard and run the jsmacros script at the right position. Afterwards paste the results back."
+        "Copy the text sequence below to clipboard and run the jsmacros script at the right position. "
+        "Afterwards paste the results back."
     )
 
     macro_input = discord.ui.TextInput(
@@ -23,7 +23,7 @@ class NameLayerImportModal(
         max_length=4000,
     )
 
-    def __init__(self, namelayers: List[str]) -> None:
+    def __init__(self, namelayers: list[str]) -> None:
         super().__init__()
 
         macro_input = f"/search:{' '.join(namelayers)}"

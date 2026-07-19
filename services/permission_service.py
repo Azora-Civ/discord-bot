@@ -1,9 +1,10 @@
 import discord.ext.commands as commands
+
 from helpers.discord import get_guild_roles, get_member
 from models.permission import Permission, PermissionLevel
 from models.permission_group import GroupPermission
-from repositories.group_permissions import GroupPermissionsRepository
 from repositories.citizens import CitizenRepository
+from repositories.group_permissions import GroupPermissionsRepository
 from repositories.permission_exceptions import PermissionExceptionsRepository
 from repositories.permissions import PermissionsRepository
 
@@ -166,7 +167,8 @@ async def _to_commands(targets: dict[str, Permission], actuals: dict[str, Permis
         actual_level = actual.level if actual else PermissionLevel.DEFAULT
 
         cmd = await _to_command(target or actual, actual_level, target_level)
-        if cmd: commands.append(cmd)
+        if cmd:
+            commands.append(cmd)
 
     return commands
 

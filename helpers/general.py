@@ -1,19 +1,12 @@
 import inspect
+import logging
 from contextlib import asynccontextmanager
-import traceback
-from logging import Logger
-import discord
-from config import DB_PATH
+
 import aiosqlite
-import logging
-
-from models.ShownException import ShownException
-
-
-from contextlib import asynccontextmanager
-import logging
-
 import discord
+
+from config import DB_PATH
+from models.ShownException import ShownException
 
 
 @asynccontextmanager
@@ -73,7 +66,14 @@ async def processing_response(
         try:
             message = await interaction.original_response()
 
-            if not message.content:
+            is_empty = (
+                    not message.content
+                    and not message.embeds
+                    and not message.attachments
+                    and not message.components
+            )
+
+            if is_empty:
                 await interaction.edit_original_response(content="Done.")
 
         except discord.NotFound:

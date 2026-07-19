@@ -3,9 +3,10 @@ from dataclasses import asdict
 
 import discord
 
+import config as cfg
 from models.embed_config import EmbedConfig
 from repositories.key_values import KeyValueRepository
-import config as cfg
+
 
 class RegistrationEmbedModal(discord.ui.Modal, title="Edit registration embed"):
     embed_title = discord.ui.TextInput(

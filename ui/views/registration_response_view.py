@@ -4,7 +4,7 @@ import discord
 
 from config import CITIZEN_MOD_ROLE_ID_KEY
 from helpers.general import processing_response
-from models.ShownException import BadStateException, BadRequestException
+from models.ShownException import BadRequestException, BadStateException
 from repositories.key_values import KeyValueRepository
 from repositories.registrations import RegistrationRepository
 from ui.modals.citizen_application_modal import citizen_application_modal

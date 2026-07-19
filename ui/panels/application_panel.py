@@ -7,8 +7,9 @@ from config import CITIZEN_MOD_ROLE_ID_KEY
 from helpers.discord import get_member
 from models.registration import Registration, RegistrationStatus
 from repositories.key_values import KeyValueRepository
+from texts import CITIZEN_APPLICATION_MODAL_OTHER, CITIZEN_APPLICATION_MODAL_SELF
 from ui.views.registration_response_view import RegistrationResponseView
-from texts import CITIZEN_APPLICATION_MODAL_SELF, CITIZEN_APPLICATION_MODAL_OTHER
+
 
 async def registration_panel(
     bot: Client,

@@ -4,13 +4,17 @@ import discord
 from discord import CheckboxGroupOption, SelectOption
 
 from helpers.general import processing_response
-from models.ShownException import BadRequestException
 from models.citizen import Citizenship
 from models.duchy import Duchy
 from models.registration import Registration
+from models.ShownException import BadRequestException
+from texts import (
+    CITIZEN_APPLICATION_MODAL_OTHER,
+    CITIZEN_APPLICATION_MODAL_SELF,
+    CITIZEN_APPLICATION_MODAL_SUBMITTED,
+    CITIZEN_APPLICATION_MODAL_TITLE,
+)
 from ui.modals.registration_duchy_modal import get_duchies
-from texts import CITIZEN_APPLICATION_MODAL_SELF, CITIZEN_APPLICATION_MODAL_OTHER, CITIZEN_APPLICATION_MODAL_SUBMITTED, \
-    CITIZEN_APPLICATION_MODAL_TITLE
 
 if TYPE_CHECKING:
     from services.registration_service import RegistrationService

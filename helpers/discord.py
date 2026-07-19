@@ -1,9 +1,7 @@
-from typing import Sequence, List
+from collections.abc import Sequence
 
-from _testcapi import awaitType
-from discord import Member, Guild, Role, Client, Message
-import asyncio
 import discord
+from discord import Client, Guild, Member, Message, Role
 from discord.ext.commands import Bot
 
 import config as cfg
