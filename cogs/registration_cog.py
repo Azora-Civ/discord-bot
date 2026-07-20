@@ -23,14 +23,14 @@ from ui.views.registration_view import RegistrationView
 log = logging.getLogger(__name__)
 
 STATUS_TAG_KEYS = {
-    RegistrationStatus.ACCEPTED: cfg.REGISTRATION_ACCEPTED_TAG_ID_KEY,
-    RegistrationStatus.PENDING: cfg.REGISTRATION_PENDING_TAG_ID_KEY,
-    RegistrationStatus.REJECTED: cfg.REGISTRATION_REJECTED_TAG_ID_KEY,
+    RegistrationStatus.ACCEPTED: cfg.REGISTRATION_ACCEPTED_TAG_ID,
+    RegistrationStatus.PENDING: cfg.REGISTRATION_PENDING_TAG_ID,
+    RegistrationStatus.REJECTED: cfg.REGISTRATION_REJECTED_TAG_ID,
 }
 CITIZENSHIP_TAG_KEYS = {
-    Citizenship.PRIMARY_CITIZEN: cfg.REGISTRATION_PRIMARY_TAG_ID_KEY,
-    Citizenship.SECONDARY_CITIZEN: cfg.REGISTRATION_SECONDARY_TAG_ID_KEY,
-    Citizenship.RESIDENT: cfg.REGISTRATION_RESIDENCY_TAG_ID_KEY,
+    Citizenship.PRIMARY_CITIZEN: cfg.REGISTRATION_PRIMARY_TAG_ID,
+    Citizenship.SECONDARY_CITIZEN: cfg.REGISTRATION_SECONDARY_TAG_ID,
+    Citizenship.RESIDENT: cfg.REGISTRATION_RESIDENCY_TAG_ID,
 }
 
 
@@ -125,11 +125,12 @@ class RegistrationCog(commands.Cog):
             view.message = response
 
     async def update_registration_message(self, registration: Registration):
-        forum_id = await self.key_values.get_int(cfg.REGISTRATION_FORUM_ID_KEY)
-        if forum_id is None:
+        if cfg.REGISTRATION_FORUM_ID is None:
             raise BadStateException("Registration forum is not configured.")
 
-        channel = self.bot.get_channel(forum_id) or await self.bot.fetch_channel(forum_id)
+        channel = self.bot.get_channel(cfg.REGISTRATION_FORUM_ID) or await self.bot.fetch_channel(
+            cfg.REGISTRATION_FORUM_ID
+        )
 
         if not isinstance(channel, discord.ForumChannel):
             raise BadStateException("Configured registration channel is not a forum channel.")
@@ -169,8 +170,8 @@ class RegistrationCog(commands.Cog):
         registration: Registration,
     ) -> list[discord.ForumTag]:
         tag_ids = [
-            await self.key_values.get_int(STATUS_TAG_KEYS[registration.status]),
-            await self.key_values.get_int(CITIZENSHIP_TAG_KEYS[registration.citizenship_type]),
+            STATUS_TAG_KEYS[registration.status],
+            CITIZENSHIP_TAG_KEYS[registration.citizenship_type],
         ]
         tags = []
         for tag_id in tag_ids:
@@ -245,91 +246,6 @@ class RegistrationCog(commands.Cog):
             await interaction.edit_original_response(content="Registration panel posted.")
 
     @root_group.command(
-        name="set-channel",
-        description="[ADMIN] Setup where registration creates registration threads.",
-    )
-    @app_commands.describe(
-        channel="Forum channel where registration threads are created.",
-        accepted_tag="Forum tag for accepted registrations. Use tag name or id.",
-        pending_tag="Forum tag for pending registrations. Use tag name or id.",
-        rejected_tag="Forum tag for rejected registrations. Use tag name or id.",
-        primary_tag="Forum tag for primary citizen registrations. Use tag name or id.",
-        secondary_tag="Forum tag for secondary citizen registrations. Use tag name or id.",
-        residency_tag="Forum tag for residency registrations. Use tag name or id.",
-    )
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def set_registration_channel(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.ForumChannel,
-        accepted_tag: str | None = None,
-        pending_tag: str | None = None,
-        rejected_tag: str | None = None,
-        primary_tag: str | None = None,
-        secondary_tag: str | None = None,
-        residency_tag: str | None = None,
-    ):
-        async with respond(interaction, ephemeral=False) as should_process:
-            if not should_process:
-                return
-
-            await self.key_values.set_int(key=cfg.REGISTRATION_FORUM_ID_KEY, value=channel.id)
-            configured_tags = await self._set_registration_tags(
-                channel=channel,
-                tag_inputs={
-                    cfg.REGISTRATION_ACCEPTED_TAG_ID_KEY: accepted_tag,
-                    cfg.REGISTRATION_PENDING_TAG_ID_KEY: pending_tag,
-                    cfg.REGISTRATION_REJECTED_TAG_ID_KEY: rejected_tag,
-                    cfg.REGISTRATION_PRIMARY_TAG_ID_KEY: primary_tag,
-                    cfg.REGISTRATION_SECONDARY_TAG_ID_KEY: secondary_tag,
-                    cfg.REGISTRATION_RESIDENCY_TAG_ID_KEY: residency_tag,
-                },
-            )
-
-            tag_lines = "\n".join(f"{label}: {tag.name}" for label, tag in configured_tags)
-            if not tag_lines:
-                tag_lines = "No tags changed."
-
-            await self.refresh_active_registration_posts()
-
-            await interaction.edit_original_response(
-                content=(
-                    "Successfully updated the registration channel. Future registrations will now "
-                    f"be made under: {channel.mention}\n{tag_lines}"
-                )
-            )
-
-    async def _set_registration_tags(
-        self,
-        *,
-        channel: discord.ForumChannel,
-        tag_inputs: dict[str, str | None],
-    ) -> list[tuple[str, discord.ForumTag]]:
-        configured: list[tuple[str, discord.ForumTag]] = []
-        labels = {
-            cfg.REGISTRATION_ACCEPTED_TAG_ID_KEY: "Accepted",
-            cfg.REGISTRATION_PENDING_TAG_ID_KEY: "Pending",
-            cfg.REGISTRATION_REJECTED_TAG_ID_KEY: "Rejected",
-            cfg.REGISTRATION_PRIMARY_TAG_ID_KEY: "Primary",
-            cfg.REGISTRATION_SECONDARY_TAG_ID_KEY: "Secondary",
-            cfg.REGISTRATION_RESIDENCY_TAG_ID_KEY: "Residency",
-        }
-
-        for key, tag_input in tag_inputs.items():
-            if tag_input is None:
-                continue
-
-            tag = _resolve_forum_tag(channel, tag_input)
-            if tag is None:
-                raise BadRequestException(f"Could not find forum tag `{tag_input}` in {channel.mention}.")
-
-            await self.key_values.set_int(key=key, value=tag.id)
-            configured.append((labels[key], tag))
-
-        return configured
-
-    @root_group.command(
         name="set-snitch",
         description="[ADMIN] Setup the snitch to listen for and where to listen.",
     )
@@ -354,50 +270,6 @@ class RegistrationCog(commands.Cog):
                 content=(
                     "Successfully updated the registration snitch. Will now listen to snitch hits "
                     f"of '{snitch}' on '{snitch_group}' in {channel.mention}."
-                )
-            )
-
-    @root_group.command(
-        name="set-roles",
-        description="[ADMIN] Setup roles given when registrations are accepted.",
-    )
-    @app_commands.describe(
-        resident_role="Role given to residents. Leave empty to clear.",
-        citizen_role="Role given to citizens. Leave empty to clear.",
-        member_role="Role given to both residents and citizens. Leave empty to clear.",
-    )
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def set_registration_roles(
-        self,
-        interaction: discord.Interaction,
-        resident_role: discord.Role | None = None,
-        citizen_role: discord.Role | None = None,
-        member_role: discord.Role | None = None,
-    ):
-        async with respond(interaction, ephemeral=False) as should_process:
-            if not should_process:
-                return
-
-            roles = {
-                cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY: resident_role,
-                cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY: citizen_role,
-                cfg.REGISTRATION_MEMBER_ROLE_ID_KEY: member_role,
-            }
-
-            for key, role in roles.items():
-                if role is None:
-                    await self.key_values.delete(key)
-                    continue
-
-                await self.key_values.set_int(key=key, value=role.id)
-
-            await interaction.edit_original_response(
-                content=(
-                    "Successfully updated registration roles.\n"
-                    f"Resident: {resident_role.mention if resident_role else 'None'}\n"
-                    f"Citizen: {citizen_role.mention if citizen_role else 'None'}\n"
-                    f"Resident/Citizen: {member_role.mention if member_role else 'None'}"
                 )
             )
 
@@ -435,22 +307,6 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
     bot.add_view(RegistrationView())
     bot.add_view(RegistrationResponseView())
-
-
-def _resolve_forum_tag(channel: discord.ForumChannel, value: str) -> discord.ForumTag | None:
-    value = value.strip()
-    if not value:
-        return None
-
-    if value.isdecimal():
-        return _forum_tag_by_id(channel, int(value))
-
-    value_key = value.casefold()
-    for tag in channel.available_tags:
-        if tag.name.casefold() == value_key:
-            return tag
-
-    return None
 
 
 def _forum_tag_by_id(channel: discord.ForumChannel, tag_id: int) -> discord.ForumTag | None:

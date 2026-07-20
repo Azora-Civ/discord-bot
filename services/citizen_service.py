@@ -25,6 +25,16 @@ class CitizenService:
         *,
         source: str | None = None,
     ) -> Citizen:
+        citizen.in_game_name = citizen.in_game_name.strip()
+        if not citizen.in_game_name:
+            raise BadRequestException("In-game name cannot be empty.")
+
+        if await self.repo.fetch_by_ign(citizen.in_game_name) is not None:
+            raise BadRequestException("That in-game name already belongs to another citizen.")
+
+        if citizen.user_id is not None and await self.repo.fetch_by_user_id(citizen.user_id) is not None:
+            raise BadRequestException("That Discord user already belongs to another citizen.")
+
         citizen.id = await self.repo.create(citizen)
         await self.on_citizen_changed.emit(
             CitizenChangedEvent(

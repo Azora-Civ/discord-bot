@@ -32,6 +32,22 @@ def _env_int(name: str, default: int | None = None, *, minimum: int | None = Non
     return value
 
 
+def _env_optional_int(name: str, *, minimum: int | None = None) -> int | None:
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        return None
+
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"Environment variable {name} must be an integer.") from exc
+
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f"Environment variable {name} must be at least {minimum}.")
+
+    return value
+
+
 # General
 TOKEN = _required_env("DISCORD_TOKEN")
 GUILD_ID = _env_int("GUILD_ID")
@@ -49,24 +65,23 @@ LOG_PATH = Path(os.getenv("LOG_PATH") or "logs")
 
 
 # Citizen
-CITIZEN_MOD_ROLE_ID_KEY = "citizen.mod_role_id"
-CITIZEN_SNITCH_CHANNEL_ID_KEY = "citizen.snitch_channel_id"
+CITIZEN_MOD_ROLE_ID = _env_optional_int("CITIZEN_MOD_ROLE_ID")
 
 # Registration
 REGISTRATION_EMBED_KEY = "registration.embed"
 REGISTRATION_DUCHY_KEY = "registration.duchy"
-REGISTRATION_FORUM_ID_KEY = "registration.forum_id"
-REGISTRATION_ACCEPTED_TAG_ID_KEY = "registration.tag.accepted_id"
-REGISTRATION_PENDING_TAG_ID_KEY = "registration.tag.pending_id"
-REGISTRATION_REJECTED_TAG_ID_KEY = "registration.tag.rejected_id"
-REGISTRATION_PRIMARY_TAG_ID_KEY = "registration.tag.primary_id"
-REGISTRATION_SECONDARY_TAG_ID_KEY = "registration.tag.secondary_id"
-REGISTRATION_RESIDENCY_TAG_ID_KEY = "registration.tag.residency_id"
+REGISTRATION_FORUM_ID = _env_optional_int("REGISTRATION_FORUM_ID")
+REGISTRATION_ACCEPTED_TAG_ID = _env_optional_int("REGISTRATION_ACCEPTED_TAG_ID")
+REGISTRATION_PENDING_TAG_ID = _env_optional_int("REGISTRATION_PENDING_TAG_ID")
+REGISTRATION_REJECTED_TAG_ID = _env_optional_int("REGISTRATION_REJECTED_TAG_ID")
+REGISTRATION_PRIMARY_TAG_ID = _env_optional_int("REGISTRATION_PRIMARY_TAG_ID")
+REGISTRATION_SECONDARY_TAG_ID = _env_optional_int("REGISTRATION_SECONDARY_TAG_ID")
+REGISTRATION_RESIDENCY_TAG_ID = _env_optional_int("REGISTRATION_RESIDENCY_TAG_ID")
 
 REGISTRATION_SNITCH_CHANNEL_ID_KEY = "registration.snitch_channel_id"
 REGISTRATION_SNITCH_NAME_KEY = "registration.snitch_name"
 REGISTRATION_SNITCH_GROUP_KEY = "registration.snitch_group"
 
-REGISTRATION_RESIDENT_ROLE_ID_KEY = "registration.resident_role_id"
-REGISTRATION_CITIZEN_ROLE_ID_KEY = "registration.citizen_role_id"
-REGISTRATION_MEMBER_ROLE_ID_KEY = "registration.member_role_id"
+REGISTRATION_RESIDENT_ROLE_ID = _env_optional_int("REGISTRATION_RESIDENT_ROLE_ID")
+REGISTRATION_CITIZEN_ROLE_ID = _env_optional_int("REGISTRATION_CITIZEN_ROLE_ID")
+REGISTRATION_MEMBER_ROLE_ID = _env_optional_int("REGISTRATION_MEMBER_ROLE_ID")

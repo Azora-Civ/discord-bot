@@ -13,14 +13,13 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install deployment tools
-        run: sudo apt-get update && sudo apt-get install --yes lftp jq
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lftp jq
 
       - name: Log in to AMP
         id: amp-login
@@ -61,10 +60,13 @@ jobs:
           echo "session_id=$session_id" >> "$GITHUB_OUTPUT"
 
       - name: Stop application
+        id: stop
         env:
           AMP_URL: ${{ secrets.AMP_URL }}
           SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
         run: |
+          set -euo pipefail
+
           curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Authorization: Bearer $SESSION_ID" \
@@ -72,10 +74,11 @@ jobs:
             --data '{}' \
             "${AMP_URL%/}/API/Core/Stop"
 
-          # Give the Python process time to finish graceful shutdown.
+          # Allow the bot to finish its graceful shutdown.
           sleep 5
 
-      - name: Upload application over SFTP
+      - name: Back up application
+        id: backup
         env:
           SFTP_HOST: ${{ secrets.AMP_SFTP_HOST }}
           SFTP_PORT: ${{ secrets.AMP_SFTP_PORT }}
@@ -85,40 +88,114 @@ jobs:
         run: |
           set -euo pipefail
 
+          mkdir -p backup
+
           lftp <<EOF
           set cmd:fail-exit yes
           set net:max-retries 2
-          set net:timeout 20
+          set net:timeout 30
           set sftp:auto-confirm yes
 
           open -u "$SFTP_USERNAME","$SFTP_PASSWORD" \
             "sftp://$SFTP_HOST:$SFTP_PORT"
 
-          mirror --reverse \
-            --delete \
+          mirror \
             --verbose \
             --exclude-glob .git/ \
-            --exclude-glob .github/ \
-            --exclude-glob .env \
-            --exclude-glob '*.db' \
-            --exclude-glob '*.sqlite' \
-            --exclude-glob '*.sqlite3' \
             --exclude-glob __pycache__/ \
             --exclude-glob '*.pyc' \
-            ./ "$SFTP_PATH"
+            "$SFTP_PATH" backup
 
           bye
           EOF
 
+          tar \
+            --create \
+            --gzip \
+            --file amp-backup.tar.gz \
+            --directory backup \
+            .
+
+      - name: Store backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: amp-backup-${{ github.run_number }}
+          path: amp-backup.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Request AMP update
+        id: update
+        env:
+          AMP_URL: ${{ secrets.AMP_URL }}
+          SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
+          AMP_UPDATE_ENDPOINT: ${{ secrets.AMP_UPDATE_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $SESSION_ID" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "${AMP_URL%/}/${AMP_UPDATE_ENDPOINT#/}"
+
       - name: Start application
+        id: start
         if: always() && steps.amp-login.outcome == 'success'
         env:
           AMP_URL: ${{ secrets.AMP_URL }}
           SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
         run: |
+          set -euo pipefail
+
           curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Authorization: Bearer $SESSION_ID" \
             --header "Content-Type: application/json" \
             --data '{}' \
             "${AMP_URL%/}/API/Core/Start"
+
+      - name: Send Discord failure alert
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DEPLOY_DISCORD_WEBHOOK }}
+        run: |
+          if [[ -z "${DISCORD_WEBHOOK_URL:-}" ]]; then
+            echo "No Discord webhook configured"
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --header "Content-Type: application/json" \
+            --data "$(jq -n \
+              --arg repository "${{ github.repository }}" \
+              --arg branch "${{ github.ref_name }}" \
+              --arg commit "${{ github.sha }}" \
+              --arg actor "${{ github.actor }}" \
+              --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              '{
+                content: "🚨 AMP deployment failed",
+                embeds: [{
+                  title: $repository,
+                  url: $url,
+                  color: 15158332,
+                  fields: [
+                    {
+                      name: "Branch",
+                      value: $branch,
+                      inline: true
+                    },
+                    {
+                      name: "Triggered by",
+                      value: $actor,
+                      inline: true
+                    },
+                    {
+                      name: "Commit",
+                      value: $commit
+                    }
+                  ]
+                }]
+              }')" \
+            "$DISCORD_WEBHOOK_URL"
