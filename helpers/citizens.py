@@ -17,12 +17,17 @@ async def ign_from_user(bot: commands.Bot, user: Member) -> str:
     return person.in_game_name
 
 
+ROLE_KEY_MEMBER = "member"
+ROLE_KEY_CITIZEN = "citizen"
+
+
 async def citizenship_role_ids(db) -> dict[Citizenship | str, int | None]:
     return {
         Citizenship.RESIDENT: cfg.REGISTRATION_RESIDENT_ROLE_ID,
-        Citizenship.PRIMARY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
-        Citizenship.SECONDARY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
-        "member": cfg.REGISTRATION_MEMBER_ROLE_ID,
+        Citizenship.PRIMARY_CITIZEN: cfg.REGISTRATION_PRIMARY_CITIZEN_ROLE_ID,
+        Citizenship.SECONDARY_CITIZEN: cfg.REGISTRATION_SECONDARY_CITIZEN_ROLE_ID,
+        ROLE_KEY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
+        ROLE_KEY_MEMBER: cfg.REGISTRATION_MEMBER_ROLE_ID,
     }
 
 
@@ -91,7 +96,12 @@ def desired_citizenship_role_ids(
     if citizenship is None:
         return set()
 
-    return {
-        role_ids["member"],
+    desired_role_ids = {
+        role_ids[ROLE_KEY_MEMBER],
         role_ids.get(citizenship),
-    } - {None}
+    }
+
+    if citizenship in {Citizenship.PRIMARY_CITIZEN, Citizenship.SECONDARY_CITIZEN}:
+        desired_role_ids.add(role_ids[ROLE_KEY_CITIZEN])
+
+    return desired_role_ids - {None}
