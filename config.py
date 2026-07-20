@@ -41,8 +41,6 @@ KIRA_USER_ID = _env_int("KIRA_USER_ID", 952325487663939645)
 
 # DB
 DB_PATH = os.getenv("DB_PATH") or "azora.db"
-DB_BACKUP_DIR = Path(os.getenv("DB_BACKUP_DIR") or "backups")
-DB_MAX_BACKUPS = _env_int("DB_MAX_BACKUPS", 10, minimum=0)
 
 
 # Logging
