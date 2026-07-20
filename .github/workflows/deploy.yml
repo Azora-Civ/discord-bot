@@ -29,77 +29,52 @@ jobs:
           AMP_PASSWORD: ${{ secrets.AMP_PASSWORD }}
         run: |
           set -euo pipefail
-      
-          request_body="$(
-            jq -n \
-              --arg username "$AMP_USERNAME" \
-              --arg password "$AMP_PASSWORD" \
-              '{
-                username: $username,
-                password: $password,
-                token: "",
-                rememberMe: false
-              }'
-          )"
-      
-          response_file="$(mktemp)"
-          headers_file="$(mktemp)"
-      
-          http_code="$(
-            curl \
-              --silent \
-              --show-error \
-              --location \
-              --output "$response_file" \
-              --dump-header "$headers_file" \
-              --write-out '%{http_code}' \
+
+          response="$(
+            curl --fail-with-body --silent --show-error \
               --request POST \
-              --header "Accept: application/json" \
               --header "Content-Type: application/json" \
-              --data "$request_body" \
+              --data "$(jq -n \
+                --arg username "$AMP_USERNAME" \
+                --arg password "$AMP_PASSWORD" \
+                '{
+                  username: $username,
+                  password: $password,
+                  token: "",
+                  rememberMe: false
+                }')" \
               "${AMP_URL%/}/API/Core/Login"
           )"
-      
-          echo "HTTP status: $http_code"
-          grep -i '^content-type:' "$headers_file" || true
-      
-          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-            echo "::error::AMP login returned HTTP $http_code"
-            head -c 1000 "$response_file"
-            exit 1
-          fi
-      
-          if ! jq empty "$response_file" >/dev/null 2>&1; then
-            echo "::error::AMP returned a non-JSON response"
-            echo "Response preview:"
-            head -c 1000 "$response_file"
-            exit 1
-          fi
-      
+
           session_id="$(
-            jq -r '.sessionID // .result.sessionID // empty' "$response_file"
+            jq -r '.result.sessionID // .sessionID // empty' <<< "$response"
           )"
-      
+
           if [[ -z "$session_id" ]]; then
-            echo "::error::AMP login did not return a session ID"
-            jq -c '.' "$response_file"
+            echo "::error::AMP login failed"
+            jq -c 'del(.. | .password?)' <<< "$response"
             exit 1
           fi
-      
+
           echo "::add-mask::$session_id"
           echo "session_id=$session_id" >> "$GITHUB_OUTPUT"
 
-      - name: Stop application
-        id: stop
+      - name: Trigger Update
+        id: update
         env:
           AMP_URL: ${{ secrets.AMP_URL }}
           SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
         run: |
           set -euo pipefail
-
+      
           curl --fail-with-body --silent --show-error \
-            --request POST \ 
-            --header "Authorization: Bearer $SESSION_ID" \
+            --request POST \
             --header "Content-Type: application/json" \
-            --data '{"triggerId":"6a01e34b-9de7-4243-b620-41c93e77fef9","SESSIONID":"$SESSION_ID"}' \
+            --data "$(jq -n \
+              --arg trigger_id "6a01e34b-9de7-4243-b620-41c93e77fef9" \
+              --arg session_id "$SESSION_ID" \
+              '{
+                triggerId: $trigger_id,
+                SESSIONID: $session_id
+              }')" \
             "${AMP_URL%/}/API/Core/RunEventTriggerImmediately"
