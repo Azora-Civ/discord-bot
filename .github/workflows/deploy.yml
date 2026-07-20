@@ -108,4 +108,4 @@ jobs:
                 triggerId: $trigger_id,
                 SESSIONID: $session_id
               }')" \
-            "${AMP_URL%/}/API/Core/RunEventTriggerImmediately"
+            "${AMP_URL%/}/API/ADSModule/Servers/97c8664e-67c0-4ce0-8b24-b3b59414a0f9/API/Core/RunEventTriggerImmediately"
