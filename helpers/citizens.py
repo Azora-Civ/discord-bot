@@ -1,10 +1,11 @@
 import logging
 
+import discord
 from discord import Member
 from discord.ext import commands
 
 import config as cfg
-from helpers.discord import get_member
+from helpers.discord import get_guild, get_member
 from models.citizen import Citizen, Citizenship
 from models.ShownException import NotFoundException
 
@@ -29,6 +30,19 @@ async def citizenship_role_ids(db) -> dict[Citizenship | str, int | None]:
         ROLE_KEY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
         ROLE_KEY_MEMBER: cfg.REGISTRATION_MEMBER_ROLE_ID,
     }
+
+
+async def citizenship_color(bot: commands.Bot, citizenship: Citizenship) -> discord.Color | None:
+    role_id = (await citizenship_role_ids(bot.db)).get(citizenship)
+    if role_id is None:
+        return None
+
+    guild = await get_guild(bot)
+    role = guild.get_role(role_id)
+    if role is None:
+        return None
+
+    return role.color
 
 
 async def sync_citizen_member(

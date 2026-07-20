@@ -1,5 +1,6 @@
 import discord
 
+from helpers.citizens import citizenship_color
 from helpers.discord import is_mod
 from helpers.general import respond
 from models.citizen import Citizen
@@ -105,6 +106,9 @@ class CitizenRemoveConfirmView(discord.ui.View):
 
             await interaction.response.edit_message(
                 content=None,
-                embed=citizen_panel(self.citizen),
+                embed=citizen_panel(
+                    self.citizen,
+                    color=await citizenship_color(interaction.client, self.citizen.citizenship),
+                ),
                 view=CitizenManagementView(self.citizen),
             )

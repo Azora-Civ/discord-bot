@@ -1,5 +1,6 @@
 import discord
 
+from helpers.citizens import citizenship_color
 from helpers.general import respond
 from models.citizen import Citizen, Citizenship
 from models.ShownException import ShownException
@@ -74,7 +75,10 @@ class CitizenEditModal(discord.ui.Modal, title="Edit citizen"):
             )
 
             await interaction.response.edit_message(
-                embed=citizen_panel(citizen),
+                embed=citizen_panel(
+                    citizen,
+                    color=await citizenship_color(interaction.client, citizen.citizenship),
+                ),
                 view=CitizenManagementView(citizen),
             )
 
