@@ -28,7 +28,7 @@ class RegistrationData:
 class Registration:
     poster_id: int
     is_for_self: bool
-    citizenship_type: Citizenship = Citizenship.CITIZEN
+    citizenship_type: Citizenship = Citizenship.PRIMARY_CITIZEN
     in_game_name: str = ""
     data: RegistrationData = field(default_factory=RegistrationData)
 

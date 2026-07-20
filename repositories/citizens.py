@@ -144,6 +144,9 @@ class CitizenRepository:
         )
 
     def _citizenship_from_db(self, value: str) -> Citizenship:
+        if value in {"CITIZEN", "Citizen"}:
+            return Citizenship.PRIMARY_CITIZEN
+
         try:
             return Citizenship[value]
         except KeyError:

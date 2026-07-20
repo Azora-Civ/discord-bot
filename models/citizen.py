@@ -4,7 +4,8 @@ from enum import StrEnum
 
 
 class Citizenship(StrEnum):
-    CITIZEN = "Citizen"
+    PRIMARY_CITIZEN = "Primary Citizen"
+    SECONDARY_CITIZEN = "Secondary Citizen"
     RESIDENT = "Resident"
 
 

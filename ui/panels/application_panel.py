@@ -16,7 +16,7 @@ async def registration_panel(bot: Client, db, registration: Registration) -> dic
         RegistrationStatus.REJECTED: "❌ Rejected",
         RegistrationStatus.PENDING: "⌛ Pending",
     }[registration.status]
-    citizenship = str(registration.citizenship_type).title()
+    citizenship = registration.citizenship_type.value
 
     verified = "✅ Yes" if registration.data.snitch_hit else "❌ No"
 
