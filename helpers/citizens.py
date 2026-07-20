@@ -1,6 +1,5 @@
 import logging
 
-import discord
 from discord import Member
 from discord.ext import commands
 
@@ -43,7 +42,7 @@ async def sync_citizen_member(
     if citizen is not None:
         try:
             await member.edit(nick=citizen.in_game_name)
-        except discord.DiscordException or discord.Forbidden:
+        except Exception:  # Some Discord HTTP failures are not consistently typed here.
             log.exception("Failed to edit nickname after citizen change: %s", citizen.id)
 
     try:
@@ -52,7 +51,7 @@ async def sync_citizen_member(
             await citizenship_role_ids(bot.db),
             citizen.citizenship if citizen else None,
         )
-    except discord.DiscordException:
+    except Exception:  # Some Discord HTTP failures are not consistently typed here.
         log.exception("Failed to update roles after citizen change: %s", user_id)
 
 

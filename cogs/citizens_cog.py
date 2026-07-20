@@ -58,13 +58,16 @@ class CitizensCog(commands.Cog):
         description="List citizens, optionally filtering by in-game name.",
     )
     @app_commands.describe(
+        ign="Only show citizens whose in-game name contains this text.",
         last_online_days="Only show citizens seen online within this many days.",
+        has_discord="Only show citizens with or without a linked Discord user.",
     )
     async def list(
         self,
         interaction: discord.Interaction,
         ign: str | None = None,
         last_online_days: app_commands.Range[int, 1, 3650] | None = None,
+        has_discord: bool | None = None,
     ):
         async with respond(interaction) as should_process:
             if not should_process:
@@ -73,11 +76,13 @@ class CitizensCog(commands.Cog):
             citizens = await self.service.list_citizens(
                 ign,
                 last_online_days=last_online_days,
+                has_discord=has_discord,
             )
             msg = citizen_list_panel(
                 citizens,
                 ign_filter=ign,
                 last_online_days=last_online_days,
+                has_discord=has_discord,
                 author_id=interaction.user.id,
             )
             response = await interaction.edit_original_response(content=None, **msg)

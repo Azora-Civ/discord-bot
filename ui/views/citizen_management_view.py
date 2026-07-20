@@ -1,5 +1,6 @@
 import discord
 
+from helpers.discord import is_mod
 from helpers.general import respond
 from models.citizen import Citizen
 from ui.modals.citizen_edit_modal import CitizenEditModal
@@ -24,7 +25,7 @@ class CitizenManagementView(discord.ui.View):
             if not should_process:
                 return
 
-            if not await _is_mod(interaction):
+            if not await is_mod(interaction):
                 return
 
             await interaction.response.send_modal(CitizenEditModal(self.citizen))
@@ -43,7 +44,7 @@ class CitizenManagementView(discord.ui.View):
             if not should_process:
                 return
 
-            if not await _is_mod(interaction):
+            if not await is_mod(interaction):
                 return
 
             await interaction.response.edit_message(
@@ -72,7 +73,7 @@ class CitizenRemoveConfirmView(discord.ui.View):
             if not should_process:
                 return
 
-            if not await _is_mod(interaction):
+            if not await is_mod(interaction):
                 return
 
             service = interaction.client.citizen_service
@@ -97,7 +98,7 @@ class CitizenRemoveConfirmView(discord.ui.View):
             if not should_process:
                 return
 
-            if not await _is_mod(interaction):
+            if not await is_mod(interaction):
                 return
 
             from ui.panels.citizens_panel import citizen_panel
@@ -107,15 +108,3 @@ class CitizenRemoveConfirmView(discord.ui.View):
                 embed=citizen_panel(self.citizen),
                 view=CitizenManagementView(self.citizen),
             )
-
-
-async def _is_mod(interaction: discord.Interaction) -> bool:
-    cog = interaction.client.get_cog("CitizensCog")
-    if cog is not None and await cog._is_mod(interaction):
-        return True
-
-    await interaction.response.send_message(
-        "You are not permitted to manage citizens.",
-        ephemeral=True,
-    )
-    return False

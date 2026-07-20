@@ -6,16 +6,17 @@ from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
-from helpers.discord import get_message
+from helpers.discord import get_message, is_mod
 from helpers.general import respond
+from models.citizen import Citizen
 from models.registration import Registration, RegistrationStatus
-from models.ShownException import BadStateException
+from models.ShownException import BadRequestException, BadStateException
 from services.events import RegistrationChangedEvent
 from ui.modals.registration_duchy_modal import registration_duchy_modal
 from ui.modals.registration_embed_modal import RegistrationEmbedModal
 from ui.panels.application_panel import registration_panel as application_panel
+from ui.panels.permission_commands_panel import permission_command_embeds
 from ui.panels.registration_panel import get_embed_config, registration_panel
-from ui.views.registration_force_accept import RegistrationForceAcceptView
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
 
@@ -65,15 +66,34 @@ class RegistrationCog(commands.Cog):
     ):
         if not registration.data.snitch_hit and not force:
             raise BadStateException(
-                content=(
-                    "Registration snitch has not yet been hit! Therefore, the Minecraft Username "
-                    f"'{registration.in_game_name}' is unconfirmed."
-                ),
-                view=RegistrationForceAcceptView(),
+                "Registration snitch has not yet been hit. "
+                f"Run `/registration approve force:True` to approve `{registration.in_game_name}` anyway."
             )
 
         citizen = await self.service.accept_registration(registration, force)
         return citizen
+
+    async def _registration_from_thread(self, interaction: discord.Interaction) -> Registration:
+        registration = await self.bot.db.registrations.fetch_by_thread_id(interaction.channel_id)
+        if registration is None:
+            raise BadStateException("This command must be used in a pending registration thread.")
+        return registration
+
+    async def _require_mod(self, interaction: discord.Interaction, action: str) -> None:
+        if not await is_mod(interaction):
+            raise BadRequestException(f"You are not permitted to {action} the registration.")
+
+    async def _send_permission_commands(self, interaction: discord.Interaction, citizen: Citizen | None) -> None:
+        if citizen is None:
+            await interaction.edit_original_response(content="Registration was already accepted.")
+            return
+
+        msg = await permission_command_embeds(self.bot, ign=citizen.in_game_name)
+        msg["content"] = f"Accepted `{citizen.in_game_name}`. Permission commands:"
+
+        response = await interaction.edit_original_response(**msg)
+        if view := msg.get("view"):
+            view.message = response
 
     async def update_registration_message(self, registration: Registration):
         forum_id = await self.key_values.get_int(cfg.REGISTRATION_FORUM_ID_KEY)
@@ -126,6 +146,35 @@ class RegistrationCog(commands.Cog):
             embed_config = await get_embed_config(self.bot.db)
 
             await interaction.response.send_modal(RegistrationEmbedModal(self.bot.db, embed_config))
+
+    @root_group.command(
+        name="approve",
+        description="[MOD] Approve the registration in this thread.",
+    )
+    @app_commands.describe(force="Approve even if the registration snitch has not been hit.")
+    async def approve(self, interaction: discord.Interaction, force: bool = False):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            await self._require_mod(interaction, "approve")
+            registration = await self._registration_from_thread(interaction)
+            citizen = await self.accept_registration(registration, force)
+            await self._send_permission_commands(interaction, citizen)
+
+    @root_group.command(
+        name="deny",
+        description="[MOD] Deny the registration in this thread.",
+    )
+    async def deny(self, interaction: discord.Interaction):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            await self._require_mod(interaction, "deny")
+            registration = await self._registration_from_thread(interaction)
+            await self.reject_registration(registration)
+            await interaction.edit_original_response(content=f"Denied `{registration.in_game_name}`.")
 
     @root_group.command(name="panel", description="[ADMIN] Setup the registration panel here.")
     @app_commands.default_permissions(administrator=True)
