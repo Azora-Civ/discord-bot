@@ -33,7 +33,13 @@ class CitizensCog(commands.Cog):
             await sync_citizen_member(self.bot, event.previous.user_id, None, log=log)
 
         citizen = None if event.kind == CitizenChangeKind.DELETED else event.citizen
-        await sync_citizen_member(self.bot, event.citizen.user_id, citizen, log=log)
+        await sync_citizen_member(
+            self.bot,
+            event.citizen.user_id,
+            citizen,
+            log=log,
+            sync_nickname=event.kind == CitizenChangeKind.CREATED and event.source == "registration_accepted",
+        )
 
     root_group = app_commands.Group(
         name="citizens",

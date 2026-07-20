@@ -32,6 +32,7 @@ async def sync_citizen_member(
     citizen: Citizen | None,
     *,
     log: logging.Logger,
+    sync_nickname: bool = False,
 ) -> None:
     if user_id is None:
         return
@@ -40,7 +41,7 @@ async def sync_citizen_member(
     if member is None:
         return
 
-    if citizen is not None:
+    if citizen is not None and sync_nickname:
         try:
             await member.edit(nick=citizen.in_game_name)
         except Exception:  # Some Discord HTTP failures are not consistently typed here.
