@@ -25,30 +25,47 @@ async def role_context_for_namelayer(
 ) -> tuple[dict[int, list[str]], dict[int, str]]:
     group_permissions = [gp for gp in await bot.db.group_permissions.fetch_all() if gp.namelayer == namelayer]
     people = await bot.db.citizens.fetch_all()
-    ign_by_user_id = {person.user_id: person.in_game_name for person in people if person.user_id is not None}
-    if not ign_by_user_id:
-        return {}, {}
-
-    guild = await get_guild(bot)
-    members = await guild.query_members(
-        user_ids=list(ign_by_user_id.keys()),
-    )
     role_member_igns_by_id: dict[int, list[str]] = {}
     role_sources_by_id: dict[int, str] = {}
 
     for gp in group_permissions:
-        role = guild.get_role(gp.role_id)
-        if role is None:
+        role_sources_by_id[gp.role_id] = f"<@&{gp.role_id}>"
+        role_member_igns_by_id[gp.role_id] = []
+
+    if not role_sources_by_id:
+        return {}, {}
+
+    ign_by_user_id = {person.user_id: person.in_game_name for person in people if person.user_id is not None}
+    guild = await get_guild(bot)
+    members_by_user_id = {}
+
+    for user_ids in _chunks(list(ign_by_user_id.keys()), 100):
+        for member in await guild.query_members(
+            user_ids=user_ids,
+            limit=len(user_ids),
+        ):
+            members_by_user_id[member.id] = member
+
+    for user_id in ign_by_user_id.keys() - members_by_user_id.keys():
+        member = await get_member(bot, user_id)
+        if member is not None:
+            members_by_user_id[member.id] = member
+
+    for user_id, ign in ign_by_user_id.items():
+        member = members_by_user_id.get(user_id)
+        if member is None:
             continue
 
-        role_sources_by_id[role.id] = role.mention
-        role_member_igns_by_id[role.id] = [
-            ign_by_user_id[member.id]
-            for member in members
-            if member.id in ign_by_user_id and any(member_role.id == role.id for member_role in member.roles)
-        ]
+        for role in member.roles:
+            if role.id in role_member_igns_by_id:
+                role_member_igns_by_id[role.id].append(ign)
 
     return role_member_igns_by_id, role_sources_by_id
+
+
+def _chunks(items: list[int], size: int):
+    for index in range(0, len(items), size):
+        yield items[index : index + size]
 
 
 async def resolve_permission_target(

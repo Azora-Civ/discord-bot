@@ -65,7 +65,10 @@ class PermissionsCog(commands.Cog):
                 )
 
                 await interaction.edit_original_response(
-                    content=f"Successfully updated permissions for users with {role.mention} to {namelayer} {level}."
+                    content=(
+                        f"Successfully updated permissions for users with {role.mention} "
+                        f"to {namelayer} {level.value}."
+                    )
                 )
                 return
 
@@ -80,7 +83,7 @@ class PermissionsCog(commands.Cog):
             )
 
             await interaction.edit_original_response(
-                content=f"Successfully updated permissions for user {name} to {namelayer} {level}."
+                content=f"Successfully updated permissions for user {name} to {namelayer} {level.value}."
             )
 
     @root_group.command(
