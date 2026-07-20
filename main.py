@@ -149,7 +149,7 @@ async def main():
     if os.name == "posix":  # Linux / macOS
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(handle_signal(s)))
 
     try:
         async with bot:
