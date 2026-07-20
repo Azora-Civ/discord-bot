@@ -1,0 +1,124 @@
+name: Deploy to AMP
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: amp-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install deployment tools
+        run: sudo apt-get update && sudo apt-get install --yes lftp jq
+
+      - name: Log in to AMP
+        id: amp-login
+        env:
+          AMP_URL: ${{ secrets.AMP_URL }}
+          AMP_USERNAME: ${{ secrets.AMP_USERNAME }}
+          AMP_PASSWORD: ${{ secrets.AMP_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          response="$(
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Content-Type: application/json" \
+              --data "$(jq -n \
+                --arg username "$AMP_USERNAME" \
+                --arg password "$AMP_PASSWORD" \
+                '{
+                  username: $username,
+                  password: $password,
+                  token: "",
+                  rememberMe: false
+                }')" \
+              "${AMP_URL%/}/API/Core/Login"
+          )"
+
+          session_id="$(
+            jq -r '.result.sessionID // .sessionID // empty' <<< "$response"
+          )"
+
+          if [[ -z "$session_id" ]]; then
+            echo "::error::AMP login failed"
+            jq -c 'del(.. | .password?)' <<< "$response"
+            exit 1
+          fi
+
+          echo "::add-mask::$session_id"
+          echo "session_id=$session_id" >> "$GITHUB_OUTPUT"
+
+      - name: Stop application
+        env:
+          AMP_URL: ${{ secrets.AMP_URL }}
+          SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $SESSION_ID" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "${AMP_URL%/}/API/Core/Stop"
+
+          # Give the Python process time to finish graceful shutdown.
+          sleep 5
+
+      - name: Upload application over SFTP
+        env:
+          SFTP_HOST: ${{ secrets.AMP_SFTP_HOST }}
+          SFTP_PORT: ${{ secrets.AMP_SFTP_PORT }}
+          SFTP_USERNAME: ${{ secrets.AMP_USERNAME }}
+          SFTP_PASSWORD: ${{ secrets.AMP_PASSWORD }}
+          SFTP_PATH: ${{ secrets.AMP_SFTP_PATH }}
+        run: |
+          set -euo pipefail
+
+          lftp <<EOF
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 20
+          set sftp:auto-confirm yes
+
+          open -u "$SFTP_USERNAME","$SFTP_PASSWORD" \
+            "sftp://$SFTP_HOST:$SFTP_PORT"
+
+          mirror --reverse \
+            --delete \
+            --verbose \
+            --exclude-glob .git/ \
+            --exclude-glob .github/ \
+            --exclude-glob .env \
+            --exclude-glob '*.db' \
+            --exclude-glob '*.sqlite' \
+            --exclude-glob '*.sqlite3' \
+            --exclude-glob __pycache__/ \
+            --exclude-glob '*.pyc' \
+            ./ "$SFTP_PATH"
+
+          bye
+          EOF
+
+      - name: Start application
+        if: always() && steps.amp-login.outcome == 'success'
+        env:
+          AMP_URL: ${{ secrets.AMP_URL }}
+          SESSION_ID: ${{ steps.amp-login.outputs.session_id }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $SESSION_ID" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "${AMP_URL%/}/API/Core/Start"
