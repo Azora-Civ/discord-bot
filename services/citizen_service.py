@@ -39,6 +39,7 @@ class CitizenService:
         self,
         ign: str | None = None,
         last_online_days: int | None = None,
+        has_discord: bool | None = None,
     ) -> list[Citizen]:
         if last_online_days is not None and last_online_days < 1:
             raise BadRequestException("Last online days must be at least 1.")
@@ -52,6 +53,9 @@ class CitizenService:
         if last_online_days is not None:
             cutoff = datetime.now(UTC) - timedelta(days=last_online_days)
             citizens = [citizen for citizen in citizens if _aware(citizen.last_online) >= cutoff]
+
+        if has_discord is not None:
+            citizens = [citizen for citizen in citizens if (citizen.user_id is not None) == has_discord]
 
         return citizens
 

@@ -42,3 +42,17 @@ async def get_message(client: Bot, channel_id: int, message_id: int) -> Message 
         return message
     except discord.NotFound:
         return None
+
+
+async def is_mod(interaction: discord.Interaction):
+    user = interaction.user
+    if not isinstance(user, discord.Member):
+        return False
+
+    if user.guild_permissions.administrator:
+        return True
+
+    mod_role_id = await interaction.client.db.key_values.get_int(key=cfg.CITIZEN_MOD_ROLE_ID_KEY)
+    if mod_role_id is None:
+        return False
+    return any(role.id == mod_role_id for role in user.roles)

@@ -13,6 +13,7 @@ def citizen_list_panel(
     *,
     ign_filter: str | None = None,
     last_online_days: int | None = None,
+    has_discord: bool | None = None,
     author_id: int | None = None,
 ) -> dict[str, object]:
     if not citizens:
@@ -24,6 +25,7 @@ def citizen_list_panel(
         footer = _filter_footer(
             ign_filter=ign_filter,
             last_online_days=last_online_days,
+            has_discord=has_discord,
         )
         if footer:
             embed.set_footer(text=footer)
@@ -45,6 +47,7 @@ def citizen_list_panel(
                 pages=((len(citizens) - 1) // PAGE_SIZE) + 1,
                 ign_filter=ign_filter,
                 last_online_days=last_online_days,
+                has_discord=has_discord,
             )
         )
         pages.append(embed)
@@ -118,11 +121,13 @@ def _footer(
     pages: int,
     ign_filter: str | None,
     last_online_days: int | None,
+    has_discord: bool | None,
 ) -> str:
     text = f"{total} result(s) - Page {page}/{pages}"
     footer = _filter_footer(
         ign_filter=ign_filter,
         last_online_days=last_online_days,
+        has_discord=has_discord,
     )
     if footer:
         text += f" - {footer}"
@@ -133,10 +138,13 @@ def _filter_footer(
     *,
     ign_filter: str | None,
     last_online_days: int | None,
+    has_discord: bool | None,
 ) -> str:
     filters = []
     if ign_filter:
         filters.append(f"IGN: {ign_filter}")
     if last_online_days is not None:
         filters.append(f"Last online: {last_online_days}d")
+    if has_discord is not None:
+        filters.append(f"Discord: {'linked' if has_discord else 'unlinked'}")
     return " | ".join(filters)
