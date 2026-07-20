@@ -293,7 +293,7 @@ def _field_value(entries: list[PermissionEntry]) -> str:
 
     for level, _, _, line in entries:
         if level != current_level:
-            lines.append(f"# {level.name}")
+            lines.append(f"**{level.name}**")
             current_level = level
 
         lines.append(line)
