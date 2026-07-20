@@ -4,7 +4,6 @@ from discord.ext import commands
 from helpers.citizens import ign_from_user
 from helpers.discord import get_guild, get_member
 from models.ShownException import BadRequestException, NotFoundException
-from models.permission import PermissionLevel
 from ui.panels.permission_list import permission_list_members, permission_list_namelayers
 
 
@@ -122,17 +121,3 @@ async def user_permission_panel(bot: commands.Bot, ign: str, name: str) -> dict[
 async def namelayer_permission_panel(bot: commands.Bot, namelayer: str) -> dict[str, object]:
     actual, target = await namelayer_permission_state(bot, namelayer)
     return permission_list_members(actual, target, namelayer)
-
-def permission_matches(
-    target_level: PermissionLevel,
-    actual_level: PermissionLevel,
-) -> bool:
-    if target_level == actual_level:
-        return True
-
-    owner_levels = {
-        PermissionLevel.PRIMARY_OWNER,
-        PermissionLevel.OWNER,
-    }
-
-    return target_level in owner_levels and actual_level in owner_levels
