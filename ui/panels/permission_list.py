@@ -1,36 +1,25 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
 import discord
 
-from helpers.permissions import permission_matches
 from models.permission import Permission, PermissionLevel
 from ui.panels.paginated_panel import paginated_panel
 
-
 FIELDS_PER_EMBED = 2
-
 MAX_FIELD_TOTAL_LINES = 40
 MAX_FIELD_VALUE_LINES = MAX_FIELD_TOTAL_LINES - 1
 MAX_FIELD_VALUE_LENGTH = 1024
-MAX_FIELD_NAME_LENGTH = 256
+MAX_BALANCED_ENTRY_COUNT = MAX_FIELD_TOTAL_LINES * FIELDS_PER_EMBED
 
 PREFIX_MATCH = " "
 PREFIX_GIVE = "🟩"
 PREFIX_REMOVE = "🟥"
 
-PREFIX_TO_SORT_KEY = {
-    PREFIX_REMOVE: 0,
-    PREFIX_MATCH: 1,
-    PREFIX_GIVE: 2,
-}
-
+ACTION_REMOVE = 0
+ACTION_KEEP = 1
+ACTION_ADD = 2
 
 PermissionEntry = tuple[PermissionLevel, int, str, str]
-"""
-(permission level, action, key, rendered line)
-"""
-
-PermissionSection = list[PermissionEntry]
 
 
 def permission_list_members(
@@ -68,10 +57,58 @@ def _permission_list(
     empty_description: str,
     key: Callable[[Permission], str],
 ) -> dict[str, object]:
-    entries = _sorted_entries(_to_entries(actual, target, key))
-    sections = _split(entries)
+    target_by_key = {key(permission): permission for permission in target}
+    actual_by_key = {key(permission): permission for permission in actual}
 
-    if not sections:
+    entries: list[PermissionEntry] = []
+    for permission_key in sorted(target_by_key.keys() | actual_by_key.keys()):
+        target_permission = target_by_key.get(permission_key)
+        actual_permission = actual_by_key.get(permission_key)
+
+        if (
+            target_permission
+            and actual_permission
+            and _permission_matches(
+                target_permission.level,
+                actual_permission.level,
+            )
+        ):
+            entries.append(
+                _permission_entry(
+                    target_permission.level,
+                    PREFIX_MATCH,
+                    permission_key,
+                    target_permission,
+                    ACTION_KEEP,
+                )
+            )
+            continue
+
+        if actual_permission:
+            entries.append(
+                _permission_entry(
+                    actual_permission.level,
+                    PREFIX_REMOVE,
+                    permission_key,
+                    None,
+                    ACTION_REMOVE,
+                )
+            )
+
+        if target_permission:
+            entries.append(
+                _permission_entry(
+                    target_permission.level,
+                    PREFIX_GIVE,
+                    permission_key,
+                    target_permission,
+                    ACTION_ADD,
+                )
+            )
+
+    fields = _fields(_sorted_entries(entries))
+
+    if not fields:
         return paginated_panel(
             [
                 discord.Embed(
@@ -82,134 +119,68 @@ def _permission_list(
             ]
         )
 
-    pages = _to_pages(sections)
+    pages = _chunk_fields(fields)
     total = len(pages)
 
     embeds: list[discord.Embed] = []
-
     for index, page in enumerate(pages, start=1):
         embed = discord.Embed(
-            title=f"{title} ({index}/{total})" if total > 1 else title,
-            description=f"{PREFIX_REMOVE} → remove | {PREFIX_GIVE} → add",
+            title=(f"{title} ({index}/{total})" if total > 1 else title),
+            description=f"{PREFIX_REMOVE} -> remove | {PREFIX_GIVE} -> add",
             color=discord.Color.blurple(),
         )
-
-        for section in page:
-            embed.add_field(
-                name=_to_field_name(section),
-                value=_to_field_value(section),
-                inline=len(page) > 1,
-            )
-
+        for name, value in page:
+            embed.add_field(name=name, value=value, inline=True)
         embeds.append(embed)
 
     return paginated_panel(embeds)
 
 
-def _to_entries(
-    actual: list[Permission],
-    target: list[Permission],
-    key: Callable[[Permission], str],
-) -> list[PermissionEntry]:
-    actual_by_key = _index_permissions(actual, key)
-    target_by_key = _index_permissions(target, key)
+def _permission_matches(
+    target_level: PermissionLevel,
+    actual_level: PermissionLevel,
+) -> bool:
+    if target_level == actual_level:
+        return True
 
-    entries: list[PermissionEntry] = []
+    owner_levels = {
+        PermissionLevel.PRIMARY_OWNER,
+        PermissionLevel.OWNER,
+    }
 
-    for normalized_key in sorted(actual_by_key.keys() | target_by_key.keys()):
-        actual_item = actual_by_key.get(normalized_key)
-        target_item = target_by_key.get(normalized_key)
-
-        actual_permission = actual_item[1] if actual_item else None
-        target_permission = target_item[1] if target_item else None
-
-        # Prefer the target's casing when both sides contain the key.
-        permission_key = (
-            target_item[0]
-            if target_item is not None
-            else actual_item[0]  # type: ignore[index]
-        )
-
-        if (
-            target_permission is not None
-            and actual_permission is not None
-            and permission_matches(
-                target_permission.level,
-                actual_permission.level,
-            )
-        ):
-            entries.append(
-                _to_entry(
-                    PREFIX_MATCH,
-                    permission_key,
-                    target_permission,
-                )
-            )
-            continue
-
-        if actual_permission is not None:
-            entries.append(
-                _to_entry(
-                    PREFIX_REMOVE,
-                    permission_key,
-                    actual_permission,
-                )
-            )
-
-        if target_permission is not None:
-            entries.append(
-                _to_entry(
-                    PREFIX_GIVE,
-                    permission_key,
-                    target_permission,
-                )
-            )
-
-    return entries
+    return target_level in owner_levels and actual_level in owner_levels
 
 
-def _index_permissions(
-    permissions: Sequence[Permission],
-    key: Callable[[Permission], str],
-) -> dict[str, tuple[str, Permission]]:
-    result: dict[str, tuple[str, Permission]] = {}
-
-    for permission in permissions:
-        permission_key = key(permission)
-        normalized_key = permission_key.casefold()
-
-        if normalized_key in result:
-            raise ValueError(
-                f"Duplicate permission key: {permission_key!r}"
-            )
-
-        result[normalized_key] = permission_key, permission
-
-    return result
-
-
-def _to_entry(
+def _permission_entry(
+    level: PermissionLevel,
     prefix: str,
     permission_key: str,
-    permission: Permission,
+    target_permission: Permission | None,
+    action: int,
 ) -> PermissionEntry:
-    line = f"{prefix} {_escape_display_text(permission_key)}"
-
-    source = getattr(permission, "source", None)
-    if source is not None:
-        line += f" ({_escape_display_text(source)})"
-
     return (
-        permission.level,
-        PREFIX_TO_SORT_KEY[prefix],
+        level,
+        action,
         permission_key,
-        _truncate(line, MAX_FIELD_VALUE_LENGTH),
+        _permission_line(prefix, permission_key, target_permission),
     )
 
 
-def _sorted_entries(
-    entries: Sequence[PermissionEntry],
-) -> list[PermissionEntry]:
+def _permission_line(
+    prefix: str,
+    permission_key: str,
+    target_permission: Permission | None,
+) -> str:
+    line = f"{prefix} {discord.utils.escape_markdown(permission_key)}"
+
+    source = getattr(target_permission, "source", None)
+    if source:
+        line += f" ({source})"
+
+    return line
+
+
+def _sorted_entries(entries: list[PermissionEntry]) -> list[PermissionEntry]:
     return sorted(
         entries,
         key=lambda entry: (
@@ -220,164 +191,119 @@ def _sorted_entries(
     )
 
 
-def _split(
-    entries: Sequence[PermissionEntry],
-) -> list[PermissionSection]:
-    sections: list[PermissionSection] = []
-    current: PermissionSection = []
+def _fields(entries: list[PermissionEntry]) -> list[tuple[str, str]]:
+    if len(entries) <= MAX_BALANCED_ENTRY_COUNT:
+        balanced_chunks = _balanced_chunks(entries)
+        if balanced_chunks is not None:
+            return [_field(chunk) for chunk in balanced_chunks]
 
-    for entry in entries:
-        candidate = [*current, entry]
-
-        if current and not _field_fits(candidate):
-            sections.append(current)
-            current = [entry]
-        else:
-            current = candidate
-
-        # This should only be possible when one rendered line itself is invalid.
-        if not _field_fits(current):
-            raise ValueError(
-                f"Permission entry cannot fit in a Discord field: {entry[2]!r}"
-            )
-
-    if current:
-        sections.append(current)
-
-    return sections
+    return [_field(chunk) for chunk in _entry_chunks(entries)]
 
 
-def _to_pages(
-    sections: Sequence[PermissionSection],
-) -> list[list[PermissionSection]]:
-    pages: list[list[PermissionSection]] = []
+def _balanced_chunks(entries: list[PermissionEntry]) -> list[list[PermissionEntry]] | None:
+    if len(entries) <= 1 and _valid_field(entries):
+        return [entries]
 
-    for index in range(0, len(sections), FIELDS_PER_EMBED):
-        page = list(sections[index : index + FIELDS_PER_EMBED])
-
-        if FIELDS_PER_EMBED == 2:
-            left = page[0]
-            right = page[1] if len(page) > 1 else []
-
-            left, right = _balance(left, right)
-            page = [section for section in (left, right) if section]
-
-        pages.append(page)
-
-    return pages
-
-
-def _balance(
-    left: PermissionSection,
-    right: PermissionSection,
-) -> tuple[PermissionSection, PermissionSection]:
-    combined = [*left, *right]
-
-    if len(combined) < 2:
-        return left, right
-
-    candidates: list[
-        tuple[
-            tuple[int, int],
-            PermissionSection,
-            PermissionSection,
-        ]
-    ] = []
-
-    for split_index in range(1, len(combined)):
-        candidate_left = combined[:split_index]
-        candidate_right = combined[split_index:]
-
-        if not (
-            _field_fits(candidate_left)
-            and _field_fits(candidate_right)
-        ):
+    best_chunks = None
+    best_delta = None
+    for split_index in range(1, len(entries)):
+        chunks = [entries[:split_index], entries[split_index:]]
+        if not all(_valid_field(chunk) for chunk in chunks):
             continue
 
-        score = (
-            abs(
-                _field_value_line_count(candidate_left)
-                - _field_value_line_count(candidate_right)
-            ),
-            abs(len(candidate_left) - len(candidate_right)),
-        )
+        delta = abs(_field_line_count(chunks[0]) - _field_line_count(chunks[1]))
+        if best_delta is None or delta < best_delta:
+            best_chunks = chunks
+            best_delta = delta
 
-        candidates.append(
-            (score, candidate_left, candidate_right)
-        )
+    if best_chunks is None:
+        return None
 
-    if not candidates:
-        return left, right
-
-    _, balanced_left, balanced_right = min(
-        candidates,
-        key=lambda candidate: candidate[0],
-    )
-
-    return balanced_left, balanced_right
+    return best_chunks
 
 
-def _field_fits(entries: Sequence[PermissionEntry]) -> bool:
+def _entry_chunks(entries: list[PermissionEntry]) -> list[list[PermissionEntry]]:
+    chunks: list[list[PermissionEntry]] = []
+    current_chunk: list[PermissionEntry] = []
+
+    for entry in entries:
+        next_chunk = [*current_chunk, entry]
+        if current_chunk and not _valid_field(next_chunk):
+            chunks.append(current_chunk)
+            current_chunk = [entry]
+            continue
+
+        current_chunk = next_chunk
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return _balance_last_chunks(chunks)
+
+
+def _balance_last_chunks(chunks: list[list[PermissionEntry]]) -> list[list[PermissionEntry]]:
+    if len(chunks) < 2 or len(chunks) % FIELDS_PER_EMBED == 0:
+        return chunks
+
+    last_entries = chunks.pop()
+    previous_entries = chunks.pop()
+    balanced_chunks = _balanced_chunks(previous_entries + last_entries)
+    if balanced_chunks is None:
+        chunks.extend([previous_entries, last_entries])
+        return chunks
+
+    chunks.extend(balanced_chunks)
+    return chunks
+
+
+def _valid_field(entries: list[PermissionEntry]) -> bool:
     if not entries:
         return False
 
-    return (
-        _field_value_line_count(entries) <= MAX_FIELD_VALUE_LINES
-        and len(_to_field_value(entries)) <= MAX_FIELD_VALUE_LENGTH
-    )
+    return _field_line_count(entries) <= MAX_FIELD_VALUE_LINES and len(_field_value(entries)) <= MAX_FIELD_VALUE_LENGTH
 
 
-def _field_value_line_count(
-    entries: Sequence[PermissionEntry],
+def _field_line_count(entries: list[PermissionEntry]) -> int:
+    lines = 0
+    current_level: PermissionLevel | None = None
+    for entry in entries:
+        lines += _additional_line_count_for_level(current_level, entry[0])
+        current_level = entry[0]
+
+    return lines
+
+
+def _additional_line_count_for_level(
+    current_level: PermissionLevel | None,
+    next_level: PermissionLevel,
 ) -> int:
-    if not entries:
-        return 0
+    if current_level in {None, next_level}:
+        return 1
 
-    level_headings = sum(
-        previous[0] != current[0]
-        for previous, current in zip(entries, entries[1:])
-    )
-
-    return len(entries) + level_headings
+    return 2
 
 
-def _to_field_name(
-    entries: Sequence[PermissionEntry],
-) -> str:
-    return _truncate(entries[0][0].name, MAX_FIELD_NAME_LENGTH)
+def _field(entries: list[PermissionEntry]) -> tuple[str, str]:
+    return entries[0][0].name, _field_value(entries)
 
 
-def _to_field_value(
-    entries: Sequence[PermissionEntry],
-) -> str:
+def _field_value(entries: list[PermissionEntry]) -> str:
     lines: list[str] = []
     current_level = entries[0][0]
 
-    for entry in entries:
-        level = entry[0]
-
+    for level, _, _, line in entries:
         if level != current_level:
-            current_level = level
             lines.append(f"**{level.name}**")
+            current_level = level
 
-        lines.append(entry[3])
+        lines.append(line)
 
+    return _format(lines)
+
+
+def _chunk_fields(fields: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
+    return [fields[index : index + FIELDS_PER_EMBED] for index in range(0, len(fields), FIELDS_PER_EMBED)]
+
+
+def _format(lines: list[str]) -> str:
     return "\n".join(lines)
-
-
-def _escape_display_text(value: object) -> str:
-    text = str(value).replace("\r", " ").replace("\n", " ")
-    text = discord.utils.escape_markdown(text)
-    return discord.utils.escape_mentions(text)
-
-
-def _truncate(value: str, maximum: int) -> str:
-    if len(value) <= maximum:
-        return value
-
-    truncated = value[: maximum - 1].rstrip()
-
-    # Avoid ending on half of a Markdown escape sequence.
-    truncated = truncated.rstrip("\\")
-
-    return truncated + "…"
