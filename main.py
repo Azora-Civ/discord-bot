@@ -32,6 +32,7 @@ class RoyalSteward(commands.Bot):
         self.registration_service = RegistrationService(self.db, self.citizen_service)
         self.permission_service = PermissionService(self.db)
 
+        self.is_closing = False
         self._accepting_interactions = True
         self._active_interactions = 0
         self._interactions_idle = asyncio.Event()
@@ -89,6 +90,11 @@ class RoyalSteward(commands.Bot):
         log.info(f"Synced {len(synced)} command(s)")
 
     async def close(self):
+        if self.is_closing:
+            return
+
+        self.is_closing = True
+
         log.info("Initiating shutdown...")
 
         self._accepting_interactions = False
@@ -134,7 +140,7 @@ class RoyalSteward(commands.Bot):
             )
 
     async def safe_shutdown(self) -> None:
-        if not self.is_closing():
+        if not self.is_closing:
             asyncio.create_task(self.close())
 
 
