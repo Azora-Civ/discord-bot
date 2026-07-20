@@ -7,7 +7,10 @@ from discord.ext import commands
 
 import config as cfg
 from helpers.citizens import sync_citizen_member
+from helpers.discord import is_mod
 from helpers.general import respond
+from models.citizen import Citizen, Citizenship
+from models.ShownException import BadRequestException
 from services.events import CitizenChangedEvent, CitizenChangeKind
 from ui.panels.citizens_panel import citizen_list_panel, citizen_panel, citizen_stats_panel
 from ui.views.citizen_management_view import CitizenManagementView
@@ -21,8 +24,6 @@ class CitizensCog(commands.Cog):
         self.bot = bot
         self.service = bot.citizen_service
         self.service.on_citizen_changed.subscribe(self.handle_citizen_changed)
-        self.snitch_cache = False
-        self.snitch_channel: int | None = None
 
     async def handle_citizen_changed(self, event: CitizenChangedEvent) -> None:
         if event.kind == CitizenChangeKind.ACTIVITY:
@@ -38,20 +39,6 @@ class CitizensCog(commands.Cog):
         name="citizens",
         description="Commands for viewing and managing citizens.",
     )
-
-    async def _set_snitch_channel(self):
-        self.snitch_cache = True
-        self.snitch_channel = await self.bot.db.key_values.get_int(key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY)
-
-    async def _is_mod(self, interaction: discord.Interaction) -> bool:
-        if not isinstance(interaction.user, discord.Member):
-            return False
-
-        if interaction.user.guild_permissions.administrator:
-            return True
-
-        role_id = await self.bot.db.key_values.get_int(cfg.CITIZEN_MOD_ROLE_ID_KEY)
-        return role_id is not None and any(role.id == role_id for role in interaction.user.roles)
 
     @root_group.command(
         name="list",
@@ -90,6 +77,43 @@ class CitizensCog(commands.Cog):
                 view.message = response
 
     @root_group.command(
+        name="add",
+        description="[MOD] Add a citizen or resident without a registration.",
+    )
+    @app_commands.describe(
+        ign="In-game name for the new citizen/resident.",
+        citizenship="Citizenship type to assign.",
+        user="Optional Discord user to link.",
+    )
+    async def add(
+        self,
+        interaction: discord.Interaction,
+        ign: str,
+        citizenship: Citizenship,
+        user: discord.Member | None = None,
+    ):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            if not await is_mod(interaction):
+                raise BadRequestException("You are not permitted to add citizens.")
+
+            citizen = await self.service.create_citizen(
+                Citizen(
+                    in_game_name=ign,
+                    user_id=user.id if user is not None else None,
+                    citizenship=citizenship,
+                ),
+                source="citizen_added_directly",
+            )
+            await interaction.edit_original_response(
+                content=f"Added `{citizen.in_game_name}`.",
+                embed=citizen_panel(citizen),
+                view=CitizenManagementView(citizen),
+            )
+
+    @root_group.command(
         name="view",
         description="View one citizen by Discord user or in-game name.",
     )
@@ -108,7 +132,7 @@ class CitizensCog(commands.Cog):
 
             citizen = await self.service.get_citizen(user_id=user.id if user else None, ign=ign)
             msg = {"embed": citizen_panel(citizen)}
-            if await self._is_mod(interaction):
+            if await is_mod(interaction):
                 msg["view"] = CitizenManagementView(citizen)
             await interaction.edit_original_response(content=None, **msg)
 
@@ -131,64 +155,9 @@ class CitizensCog(commands.Cog):
                 embed=citizen_stats_panel(total, active, active_days),
             )
 
-    @root_group.command(
-        name="set-snitch-channel",
-        description="[ADMIN] Set the channel used to track citizen activity from snitch hits.",
-    )
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def set_snitch_channel(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.TextChannel,
-    ):
-        async with respond(interaction, ephemeral=False) as should_process:
-            if not should_process:
-                return
-
-            await self.bot.db.key_values.set_int(
-                key=cfg.CITIZEN_SNITCH_CHANNEL_ID_KEY,
-                value=channel.id,
-            )
-            await self._set_snitch_channel()
-            await interaction.edit_original_response(
-                content=(f"Citizen activity will now be tracked from snitch hits in {channel.mention}.")
-            )
-
-    @root_group.command(
-        name="set-mod-role",
-        description="[ADMIN] Set the role allowed to manage citizens.",
-    )
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def set_mod_role(
-        self,
-        interaction: discord.Interaction,
-        role: discord.Role | None = None,
-    ):
-        async with respond(interaction, ephemeral=False) as should_process:
-            if not should_process:
-                return
-
-            if role is None:
-                await self.bot.db.key_values.delete(cfg.CITIZEN_MOD_ROLE_ID_KEY)
-                await interaction.edit_original_response(
-                    content="Citizen mod role cleared. Administrators can still manage citizens."
-                )
-                return
-
-            await self.bot.db.key_values.set_int(cfg.CITIZEN_MOD_ROLE_ID_KEY, role.id)
-            await interaction.edit_original_response(content=f"Citizen mod role set to {role.mention}.")
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.id != cfg.KIRA_USER_ID:
-            return
-
-        if not self.snitch_cache:
-            await self._set_snitch_channel()
-
-        if self.snitch_channel is None or message.channel.id != self.snitch_channel:
             return
 
         match = SNITCH_HIT_REGEX.search(message.content)

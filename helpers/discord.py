@@ -52,7 +52,7 @@ async def is_mod(interaction: discord.Interaction):
     if user.guild_permissions.administrator:
         return True
 
-    mod_role_id = await interaction.client.db.key_values.get_int(key=cfg.CITIZEN_MOD_ROLE_ID_KEY)
-    if mod_role_id is None:
+    if cfg.CITIZEN_MOD_ROLE_ID is None:
         return False
-    return any(role.id == mod_role_id for role in user.roles)
+
+    return any(role.id == cfg.CITIZEN_MOD_ROLE_ID for role in user.roles)

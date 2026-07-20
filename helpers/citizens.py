@@ -18,12 +18,11 @@ async def ign_from_user(bot: commands.Bot, user: Member) -> str:
 
 
 async def citizenship_role_ids(db) -> dict[Citizenship | str, int | None]:
-    citizen_role_id = await db.key_values.get_int(cfg.REGISTRATION_CITIZEN_ROLE_ID_KEY)
     return {
-        Citizenship.RESIDENT: await db.key_values.get_int(cfg.REGISTRATION_RESIDENT_ROLE_ID_KEY),
-        Citizenship.PRIMARY_CITIZEN: citizen_role_id,
-        Citizenship.SECONDARY_CITIZEN: citizen_role_id,
-        "member": await db.key_values.get_int(cfg.REGISTRATION_MEMBER_ROLE_ID_KEY),
+        Citizenship.RESIDENT: cfg.REGISTRATION_RESIDENT_ROLE_ID,
+        Citizenship.PRIMARY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
+        Citizenship.SECONDARY_CITIZEN: cfg.REGISTRATION_CITIZEN_ROLE_ID,
+        "member": cfg.REGISTRATION_MEMBER_ROLE_ID,
     }
 
 

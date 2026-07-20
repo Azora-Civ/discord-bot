@@ -3,7 +3,7 @@ from urllib.parse import quote_plus
 import discord
 from discord import Client
 
-from config import CITIZEN_MOD_ROLE_ID_KEY
+import config as cfg
 from helpers.discord import get_member
 from models.registration import Registration, RegistrationStatus
 from texts import CITIZEN_APPLICATION_MODAL_OTHER, CITIZEN_APPLICATION_MODAL_SELF
@@ -117,8 +117,7 @@ def format_duchy(registration: Registration) -> str:
 
 
 async def mentions(db, registration: Registration):
-    admin_role = await db.key_values.get_int(key=CITIZEN_MOD_ROLE_ID_KEY)
-    admin_mention = f"<@&{admin_role}>" if admin_role else ""
+    admin_mention = f"<@&{cfg.CITIZEN_MOD_ROLE_ID}>" if cfg.CITIZEN_MOD_ROLE_ID else ""
     return " ".join(
         mention
         for mention in (
