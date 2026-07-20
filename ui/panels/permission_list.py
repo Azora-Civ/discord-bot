@@ -2,6 +2,7 @@ from collections.abc import Callable, Sequence
 
 import discord
 
+from helpers.permissions import permission_matches
 from models.permission import Permission, PermissionLevel
 from ui.panels.paginated_panel import paginated_panel
 
@@ -380,17 +381,3 @@ def _truncate(value: str, maximum: int) -> str:
     truncated = truncated.rstrip("\\")
 
     return truncated + "…"
-
-def permission_matches(
-    target_level: PermissionLevel,
-    actual_level: PermissionLevel,
-) -> bool:
-    if target_level == actual_level:
-        return True
-
-    owner_levels = {
-        PermissionLevel.PRIMARY_OWNER,
-        PermissionLevel.OWNER,
-    }
-
-    return target_level in owner_levels and actual_level in owner_levels
