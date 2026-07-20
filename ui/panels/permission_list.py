@@ -118,8 +118,8 @@ def _permission_list(
             description=f"{PREFIX_REMOVE} -> remove | {PREFIX_GIVE} -> add",
             color=discord.Color.blurple(),
         )
-        for name, value in chunk:
-            embed.add_field(name=name, value=value, inline=True)
+        for field_index, (name, value) in enumerate(chunk, start=1):
+            embed.add_field(name=name, value=value, inline=field_index % 2 == 0)
         embeds.append(embed)
 
     return paginated_panel(embeds)
