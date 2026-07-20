@@ -6,7 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
-from helpers.citizens import sync_citizen_member
+from helpers.citizens import citizenship_color, sync_citizen_member
 from helpers.discord import is_mod
 from helpers.general import respond
 from models.citizen import Citizen, Citizenship
@@ -115,7 +115,10 @@ class CitizensCog(commands.Cog):
             )
             await interaction.edit_original_response(
                 content=f"Added `{citizen.in_game_name}`.",
-                embed=citizen_panel(citizen),
+                embed=citizen_panel(
+                    citizen,
+                    color=await citizenship_color(self.bot, citizen.citizenship),
+                ),
                 view=CitizenManagementView(citizen),
             )
 
@@ -137,7 +140,12 @@ class CitizensCog(commands.Cog):
                 user = interaction.user
 
             citizen = await self.service.get_citizen(user_id=user.id if user else None, ign=ign)
-            msg = {"embed": citizen_panel(citizen)}
+            msg = {
+                "embed": citizen_panel(
+                    citizen,
+                    color=await citizenship_color(self.bot, citizen.citizenship),
+                )
+            }
             if await is_mod(interaction):
                 msg["view"] = CitizenManagementView(citizen)
             await interaction.edit_original_response(content=None, **msg)

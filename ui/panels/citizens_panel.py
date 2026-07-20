@@ -59,10 +59,10 @@ def citizen_list_panel(
     return {"embed": pages[0], "view": view}
 
 
-def citizen_panel(citizen: Citizen) -> discord.Embed:
+def citizen_panel(citizen: Citizen, *, color: discord.Color | None = None) -> discord.Embed:
     embed = discord.Embed(
         title=citizen.in_game_name,
-        color=discord.Color.gold(),
+        color=color or discord.Color.gold(),
     )
     embed.add_field(name="Citizenship", value=citizen.citizenship.value, inline=True)
     embed.add_field(name="Discord", value=_discord_value(citizen), inline=True)

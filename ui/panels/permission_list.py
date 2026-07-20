@@ -5,13 +5,21 @@ import discord
 from models.permission import Permission, PermissionLevel
 from ui.panels.paginated_panel import paginated_panel
 
-MAX_EMBED_LENGTH = 5900
-MAX_FIELD_COUNT = 25
+FIELDS_PER_EMBED = 2
+MAX_FIELD_TOTAL_LINES = 40
+MAX_FIELD_VALUE_LINES = MAX_FIELD_TOTAL_LINES - 1
 MAX_FIELD_VALUE_LENGTH = 1024
+MAX_BALANCED_ENTRY_COUNT = MAX_FIELD_TOTAL_LINES * FIELDS_PER_EMBED
 
 PREFIX_MATCH = " "
 PREFIX_GIVE = "🟩"
 PREFIX_REMOVE = "🟥"
+
+ACTION_REMOVE = 0
+ACTION_KEEP = 1
+ACTION_ADD = 2
+
+PermissionEntry = tuple[PermissionLevel, int, str, str]
 
 
 def permission_list_members(
@@ -52,7 +60,7 @@ def _permission_list(
     target_by_key = {key(permission): permission for permission in target}
     actual_by_key = {key(permission): permission for permission in actual}
 
-    entries: list[tuple[PermissionLevel, str, str, int]] = []
+    entries: list[PermissionEntry] = []
     for permission_key in sorted(target_by_key.keys() | actual_by_key.keys()):
         target_permission = target_by_key.get(permission_key)
         actual_permission = actual_by_key.get(permission_key)
@@ -71,6 +79,7 @@ def _permission_list(
                     PREFIX_MATCH,
                     permission_key,
                     target_permission,
+                    ACTION_KEEP,
                 )
             )
             continue
@@ -82,6 +91,7 @@ def _permission_list(
                     PREFIX_REMOVE,
                     permission_key,
                     None,
+                    ACTION_REMOVE,
                 )
             )
 
@@ -92,10 +102,11 @@ def _permission_list(
                     PREFIX_GIVE,
                     permission_key,
                     target_permission,
+                    ACTION_ADD,
                 )
             )
 
-    fields = _grouped_fields(entries)
+    fields = _fields(_sorted_entries(entries))
 
     if not fields:
         return paginated_panel(
@@ -108,18 +119,18 @@ def _permission_list(
             ]
         )
 
-    chunks = _chunk_fields(fields)
-    total = len(chunks)
+    pages = _chunk_fields(fields)
+    total = len(pages)
 
     embeds: list[discord.Embed] = []
-    for index, chunk in enumerate(chunks, start=1):
+    for index, page in enumerate(pages, start=1):
         embed = discord.Embed(
             title=(f"{title} ({index}/{total})" if total > 1 else title),
             description=f"{PREFIX_REMOVE} -> remove | {PREFIX_GIVE} -> add",
             color=discord.Color.blurple(),
         )
-        for field_index, (name, value) in enumerate(chunk, start=1):
-            embed.add_field(name=name, value=value, inline=field_index % 2 == 0)
+        for name, value in page:
+            embed.add_field(name=name, value=value, inline=True)
         embeds.append(embed)
 
     return paginated_panel(embeds)
@@ -145,12 +156,13 @@ def _permission_entry(
     prefix: str,
     permission_key: str,
     target_permission: Permission | None,
-) -> tuple[PermissionLevel, str, str, int]:
+    action: int,
+) -> PermissionEntry:
     return (
         level,
+        action,
         permission_key,
         _permission_line(prefix, permission_key, target_permission),
-        _prefix_sort_key(prefix),
     )
 
 
@@ -168,90 +180,130 @@ def _permission_line(
     return line
 
 
-def _grouped_fields(
-    entries: list[tuple[PermissionLevel, str, str, int]],
-) -> list[tuple[str, str]]:
-    fields: list[tuple[str, str]] = []
-
-    for level in sorted(
-        {entry[0] for entry in entries},
-        key=lambda level: level.value,
-        reverse=True,
-    ):
-        level_entries = [entry for entry in entries if entry[0] == level]
-        lines = [
-            line
-            for _, _, line, _ in sorted(
-                level_entries,
-                key=lambda entry: (entry[1].casefold(), entry[3]),
-            )
-        ]
-
-        for field_value in _field_values(lines):
-            fields.append((level.name, field_value))
-
-    return fields
+def _sorted_entries(entries: list[PermissionEntry]) -> list[PermissionEntry]:
+    return sorted(
+        entries,
+        key=lambda entry: (
+            -entry[0].value,
+            entry[1],
+            entry[2].casefold(),
+        ),
+    )
 
 
-def _prefix_sort_key(prefix: str) -> int:
-    if prefix == PREFIX_GIVE:
-        return 0
+def _fields(entries: list[PermissionEntry]) -> list[tuple[str, str]]:
+    if len(entries) <= MAX_BALANCED_ENTRY_COUNT:
+        balanced_chunks = _balanced_chunks(entries)
+        if balanced_chunks is not None:
+            return [_field(chunk) for chunk in balanced_chunks]
 
-    if prefix == PREFIX_REMOVE:
+    return [_field(chunk) for chunk in _entry_chunks(entries)]
+
+
+def _balanced_chunks(entries: list[PermissionEntry]) -> list[list[PermissionEntry]] | None:
+    if len(entries) <= 1 and _valid_field(entries):
+        return [entries]
+
+    best_chunks = None
+    best_delta = None
+    for split_index in range(1, len(entries)):
+        chunks = [entries[:split_index], entries[split_index:]]
+        if not all(_valid_field(chunk) for chunk in chunks):
+            continue
+
+        delta = abs(_field_line_count(chunks[0]) - _field_line_count(chunks[1]))
+        if best_delta is None or delta < best_delta:
+            best_chunks = chunks
+            best_delta = delta
+
+    if best_chunks is None:
+        return None
+
+    return best_chunks
+
+
+def _entry_chunks(entries: list[PermissionEntry]) -> list[list[PermissionEntry]]:
+    chunks: list[list[PermissionEntry]] = []
+    current_chunk: list[PermissionEntry] = []
+
+    for entry in entries:
+        next_chunk = [*current_chunk, entry]
+        if current_chunk and not _valid_field(next_chunk):
+            chunks.append(current_chunk)
+            current_chunk = [entry]
+            continue
+
+        current_chunk = next_chunk
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return _balance_last_chunks(chunks)
+
+
+def _balance_last_chunks(chunks: list[list[PermissionEntry]]) -> list[list[PermissionEntry]]:
+    if len(chunks) < 2 or len(chunks) % FIELDS_PER_EMBED == 0:
+        return chunks
+
+    last_entries = chunks.pop()
+    previous_entries = chunks.pop()
+    balanced_chunks = _balanced_chunks(previous_entries + last_entries)
+    if balanced_chunks is None:
+        chunks.extend([previous_entries, last_entries])
+        return chunks
+
+    chunks.extend(balanced_chunks)
+    return chunks
+
+
+def _valid_field(entries: list[PermissionEntry]) -> bool:
+    if not entries:
+        return False
+
+    return _field_line_count(entries) <= MAX_FIELD_VALUE_LINES and len(_field_value(entries)) <= MAX_FIELD_VALUE_LENGTH
+
+
+def _field_line_count(entries: list[PermissionEntry]) -> int:
+    lines = 0
+    current_level: PermissionLevel | None = None
+    for entry in entries:
+        lines += _additional_line_count_for_level(current_level, entry[0])
+        current_level = entry[0]
+
+    return lines
+
+
+def _additional_line_count_for_level(
+    current_level: PermissionLevel | None,
+    next_level: PermissionLevel,
+) -> int:
+    if current_level in {None, next_level}:
         return 1
 
     return 2
 
 
-def _field_values(lines: list[str]) -> list[str]:
-    values: list[str] = []
-    current_lines: list[str] = []
-    current_length = _format_length([])
+def _field(entries: list[PermissionEntry]) -> tuple[str, str]:
+    return entries[0][0].name, _field_value(entries)
 
-    for line in lines:
-        line_length = len(line) + 1
 
-        if current_lines and current_length + line_length > MAX_FIELD_VALUE_LENGTH:
-            values.append(_format(current_lines))
-            current_lines = []
-            current_length = _format_length([])
+def _field_value(entries: list[PermissionEntry]) -> str:
+    lines: list[str] = []
+    current_level = entries[0][0]
 
-        current_lines.append(line)
-        current_length += line_length
+    for level, _, _, line in entries:
+        if level != current_level:
+            lines.append(f"# {level.name}")
+            current_level = level
 
-    if current_lines:
-        values.append(_format(current_lines))
+        lines.append(line)
 
-    return values
+    return _format(lines)
 
 
 def _chunk_fields(fields: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
-    chunks: list[list[tuple[str, str]]] = []
-    current_chunk: list[tuple[str, str]] = []
-    current_length = 0
-
-    for field in fields:
-        field_length = len(field[0]) + len(field[1])
-
-        if current_chunk and (
-            len(current_chunk) >= MAX_FIELD_COUNT or current_length + field_length > MAX_EMBED_LENGTH
-        ):
-            chunks.append(current_chunk)
-            current_chunk = []
-            current_length = 0
-
-        current_chunk.append(field)
-        current_length += field_length
-
-    if current_chunk:
-        chunks.append(current_chunk)
-
-    return chunks
+    return [fields[index : index + FIELDS_PER_EMBED] for index in range(0, len(fields), FIELDS_PER_EMBED)]
 
 
 def _format(lines: list[str]) -> str:
     return "\n".join(lines)
-
-
-def _format_length(lines: list[str]) -> int:
-    return len(_format(lines))
