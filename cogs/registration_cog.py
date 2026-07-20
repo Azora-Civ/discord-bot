@@ -196,7 +196,7 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def edit_panel(self, interaction: discord.Interaction):
-        async with respond(interaction, defer=False) as should_process:
+        async with respond(interaction, defer=False, ephemeral=False) as should_process:
             if not should_process:
                 return
 
@@ -280,7 +280,7 @@ class RegistrationCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def set_duchies(self, interaction: discord.Interaction):
-        async with respond(interaction, defer=False) as should_process:
+        async with respond(interaction, defer=False, ephemeral=False) as should_process:
             if not should_process:
                 return
 

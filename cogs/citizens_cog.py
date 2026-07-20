@@ -92,7 +92,7 @@ class CitizensCog(commands.Cog):
         citizenship: Citizenship,
         user: discord.Member | None = None,
     ):
-        async with respond(interaction) as should_process:
+        async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
                 return
 
@@ -145,7 +145,7 @@ class CitizensCog(commands.Cog):
         interaction: discord.Interaction,
         active_days: app_commands.Range[int, 1, 365] = 14,
     ):
-        async with respond(interaction) as should_process:
+        async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
                 return
 
