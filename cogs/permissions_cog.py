@@ -51,7 +51,7 @@ class PermissionsCog(commands.Cog):
         user: Member | None = None,
         ign: str | None = None,
     ):
-        async with respond(interaction) as should_process:
+        async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
                 return
 
