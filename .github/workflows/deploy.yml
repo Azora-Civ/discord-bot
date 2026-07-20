@@ -99,6 +99,7 @@ jobs:
       
           curl --fail-with-body --silent --show-error \
             --request POST \
+            --header "Accept: application/json" \
             --header "Content-Type: application/json" \
             --data "$(jq -n \
               --arg trigger_id "6a01e34b-9de7-4243-b620-41c93e77fef9" \
