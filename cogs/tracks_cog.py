@@ -3,6 +3,7 @@ from discord import Member, app_commands
 from discord.ext import commands
 
 import config as cfg
+from helpers.autocomplete import track_autocomplete
 from helpers.general import respond
 from models.role_track import RoleTrack
 from models.ShownException import BadRequestException, NotFoundException
@@ -26,6 +27,7 @@ class TracksCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(name=track_autocomplete)
     async def set(
         self,
         interaction: discord.Interaction,
@@ -113,6 +115,7 @@ class TracksCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(name=track_autocomplete)
     async def promote(self, interaction: discord.Interaction, name: str, user: Member) -> None:
         async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
@@ -150,6 +153,7 @@ class TracksCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(name=track_autocomplete)
     async def demote(self, interaction: discord.Interaction, name: str, user: Member) -> None:
         async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
