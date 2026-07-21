@@ -79,6 +79,7 @@ class PermissionService:
         role_sources_by_id: dict[int, str] | None = None,
     ) -> list[Permission]:
         role_sources_by_id = role_sources_by_id or {}
+        effective_role_sources_by_id = await self._expand_role_sources(role_sources_by_id)
         perm_map: dict[str, Permission] = {}
 
         def add_permission(permission: Permission) -> None:
@@ -88,7 +89,7 @@ class PermissionService:
                 perm_map[permission.namelayer] = permission
 
         for gp in await self.db.group_permissions.fetch_all():
-            source = role_sources_by_id.get(gp.role_id)
+            source = effective_role_sources_by_id.get(gp.role_id)
             if source is None:
                 continue
 
@@ -121,6 +122,7 @@ class PermissionService:
     ) -> list[Permission]:
         role_member_igns_by_id = role_member_igns_by_id or {}
         role_sources_by_id = role_sources_by_id or {}
+        role_member_igns_by_id = await self._expand_role_members(role_member_igns_by_id)
         group_permissions = [gp for gp in await self.db.group_permissions.fetch_all() if gp.namelayer == namelayer]
 
         perm_map: dict[str, Permission] = {}
@@ -193,6 +195,30 @@ class PermissionService:
         namelayers = list({entry.namelayer for entry in entries})
         await self.db.permissions.delete_by_namelayers(namelayers)
         await self.db.permissions.batch_create(entries)
+
+    async def _expand_role_sources(self, role_sources_by_id: dict[int, str]) -> dict[int, str]:
+        effective = dict(role_sources_by_id)
+        for track in await self.db.role_tracks.fetch_all():
+            held_indexes = [index for index, role_id in enumerate(track.role_ids) if role_id in role_sources_by_id]
+            for held_index in held_indexes:
+                held_role_id = track.role_ids[held_index]
+                for inherited_role_id in track.role_ids[: held_index + 1]:
+                    effective.setdefault(
+                        inherited_role_id,
+                        f"{role_sources_by_id[held_role_id]} via <@&{inherited_role_id}>",
+                    )
+
+        return effective
+
+    async def _expand_role_members(self, role_member_igns_by_id: dict[int, list[str]]) -> dict[int, list[str]]:
+        effective = {role_id: set(igns) for role_id, igns in role_member_igns_by_id.items()}
+        for track in await self.db.role_tracks.fetch_all():
+            for inherited_index, inherited_role_id in enumerate(track.role_ids):
+                inherited_igns = effective.setdefault(inherited_role_id, set())
+                for holder_role_id in track.role_ids[inherited_index:]:
+                    inherited_igns.update(role_member_igns_by_id.get(holder_role_id, []))
+
+        return {role_id: sorted(igns) for role_id, igns in effective.items()}
 
 
 async def _to_commands(targets: dict[str, Permission], actuals: dict[str, Permission]):
