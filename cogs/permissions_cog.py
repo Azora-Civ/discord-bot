@@ -6,6 +6,7 @@ import discord.ext.commands as commands
 from discord import Member, app_commands
 
 import config as cfg
+from helpers.autocomplete import ign_autocomplete, namelayer_autocomplete
 from helpers.citizens import ign_from_user
 from helpers.discord import is_mod
 from helpers.general import respond
@@ -42,6 +43,7 @@ class PermissionsCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(namelayer=namelayer_autocomplete, ign=ign_autocomplete)
     async def set(
         self,
         interaction: discord.Interaction,
@@ -96,6 +98,7 @@ class PermissionsCog(commands.Cog):
         ign="Only show direct permissions for this IGN.",
         namelayer="Only show permissions configured for this namelayer.",
     )
+    @app_commands.autocomplete(ign=ign_autocomplete, namelayer=namelayer_autocomplete)
     async def configured(
         self,
         interaction: discord.Interaction,
@@ -153,6 +156,7 @@ class PermissionsCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(namelayer=namelayer_autocomplete, ign=ign_autocomplete)
     async def check(
         self,
         interaction: discord.Interaction,
@@ -178,6 +182,7 @@ class PermissionsCog(commands.Cog):
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.autocomplete(namelayer=namelayer_autocomplete, ign=ign_autocomplete)
     async def list(
         self,
         interaction: discord.Interaction,

@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
+from helpers.autocomplete import ign_autocomplete
 from helpers.citizens import citizenship_color, sync_citizen_member
 from helpers.discord import is_mod
 from helpers.general import respond
@@ -55,6 +56,7 @@ class CitizensCog(commands.Cog):
         last_online_days="Only show citizens seen online within this many days.",
         has_discord="Only show citizens with or without a linked Discord user.",
     )
+    @app_commands.autocomplete(ign=ign_autocomplete)
     async def list(
         self,
         interaction: discord.Interaction,
@@ -126,6 +128,7 @@ class CitizensCog(commands.Cog):
         name="view",
         description="View one citizen by Discord user or in-game name.",
     )
+    @app_commands.autocomplete(ign=ign_autocomplete)
     async def view(
         self,
         interaction: discord.Interaction,
