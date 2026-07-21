@@ -83,7 +83,7 @@ class PermissionsCog(commands.Cog):
             )
 
             await interaction.edit_original_response(
-                content=f"Successfully updated permissions for user {name} to {namelayer} {level.value}."
+                content=f"Successfully updated permissions for user {name} to {namelayer} {level.name}."
             )
 
     @root_group.command(
@@ -203,7 +203,7 @@ class PermissionsCog(commands.Cog):
                 user=interaction.user if user is None else user,
             )
 
-            await interaction.edit_original_response(content=None, **await user_permission_panel(self.bot, ign, name))
+            await interaction.edit_original_response(content=None, **await user_permission_panel(self.bot, ign, ign))
 
     @root_group.command(name="me", description="List the namelayers you have perms to or alternatively should have.")
     async def mine(self, interaction: discord.Interaction):
@@ -214,7 +214,7 @@ class PermissionsCog(commands.Cog):
             ign = await ign_from_user(self.bot, interaction.user)
             await interaction.edit_original_response(
                 content=None,
-                **await user_permission_panel(self.bot, ign, interaction.user.mention),
+                **await user_permission_panel(self.bot, ign, ign),
             )
 
     @commands.Cog.listener()

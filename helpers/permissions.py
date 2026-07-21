@@ -24,6 +24,10 @@ async def role_context_for_namelayer(
     namelayer: str,
 ) -> tuple[dict[int, list[str]], dict[int, str]]:
     group_permissions = [gp for gp in await bot.db.group_permissions.fetch_all() if gp.namelayer == namelayer]
+    tracked_role_ids = await _track_role_ids_inheriting_from(
+        bot,
+        [group_permission.role_id for group_permission in group_permissions],
+    )
     people = await bot.db.citizens.fetch_all()
     role_member_igns_by_id: dict[int, list[str]] = {}
     role_sources_by_id: dict[int, str] = {}
@@ -31,6 +35,9 @@ async def role_context_for_namelayer(
     for gp in group_permissions:
         role_sources_by_id[gp.role_id] = f"<@&{gp.role_id}>"
         role_member_igns_by_id[gp.role_id] = []
+    for role_id in tracked_role_ids:
+        role_sources_by_id.setdefault(role_id, f"<@&{role_id}>")
+        role_member_igns_by_id.setdefault(role_id, [])
 
     if not role_sources_by_id:
         return {}, {}
@@ -66,6 +73,17 @@ async def role_context_for_namelayer(
 def _chunks(items: list[int], size: int):
     for index in range(0, len(items), size):
         yield items[index : index + size]
+
+
+async def _track_role_ids_inheriting_from(bot: commands.Bot, role_ids: list[int]) -> set[int]:
+    inheriting_role_ids: set[int] = set()
+    role_id_set = set(role_ids)
+    for track in await bot.db.role_tracks.fetch_all():
+        for index, role_id in enumerate(track.role_ids):
+            if role_id in role_id_set:
+                inheriting_role_ids.update(track.role_ids[index:])
+
+    return inheriting_role_ids
 
 
 async def resolve_permission_target(

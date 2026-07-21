@@ -10,6 +10,7 @@ from repositories.key_values import KeyValueRepository
 from repositories.permission_exceptions import PermissionExceptionsRepository
 from repositories.permissions import PermissionsRepository
 from repositories.registrations import RegistrationRepository
+from repositories.role_tracks import RoleTracksRepository
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class Database:
         self.permissions = PermissionsRepository(self)
         self.permission_exceptions = PermissionExceptionsRepository(self)
         self.group_permissions = GroupPermissionsRepository(self)
+        self.role_tracks = RoleTracksRepository(self)
 
     async def connect(self) -> None:
         self.connection = await aiosqlite.connect(self.path)
@@ -44,6 +46,7 @@ class Database:
             self.permissions,
             self.permission_exceptions,
             self.group_permissions,
+            self.role_tracks,
         ]
 
         for repo in repos:
