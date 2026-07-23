@@ -61,7 +61,7 @@ def citizen_list_panel(
 
 def citizen_panel(citizen: Citizen, *, color: discord.Color | None = None) -> discord.Embed:
     embed = discord.Embed(
-        title=citizen.in_game_name,
+        title=discord.utils.escape_markdown(citizen.in_game_name),
         color=color or discord.Color.gold(),
     )
     embed.add_field(name="Citizenship", value=citizen.citizenship.value, inline=True)
@@ -88,7 +88,7 @@ def citizen_stats_panel(total: int, active: int, active_days: int) -> discord.Em
 def _citizen_line(citizen: Citizen) -> str:
     discord_name = _discord_value(citizen)
     return (
-        f"**{citizen.in_game_name}** - {citizen.citizenship.value} - "
+        f"**{discord.utils.escape_markdown(citizen.in_game_name)}** - {citizen.citizenship.value} - "
         f"{discord_name} - last online {_relative_time(citizen.last_online)}"
     )
 
