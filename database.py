@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import aiosqlite
 
 from repositories.citizens import CitizenRepository
+from repositories.farms_repository import FarmsRepository
 from repositories.group_permissions import GroupPermissionsRepository
 from repositories.key_values import KeyValueRepository
 from repositories.permission_exceptions import PermissionExceptionsRepository
@@ -29,6 +30,7 @@ class Database:
         self.permission_exceptions = PermissionExceptionsRepository(self)
         self.group_permissions = GroupPermissionsRepository(self)
         self.role_tracks = RoleTracksRepository(self)
+        self.farms = FarmsRepository(self)
 
     async def connect(self) -> None:
         self.connection = await aiosqlite.connect(self.path)
@@ -47,6 +49,7 @@ class Database:
             self.permission_exceptions,
             self.group_permissions,
             self.role_tracks,
+            self.farms,
         ]
 
         for repo in repos:

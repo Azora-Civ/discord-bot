@@ -50,6 +50,14 @@ async def track_autocomplete(
     return _choices((track.name for track in tracks), current)
 
 
+async def farm_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    farms = await interaction.client.db.farms.fetch_all()
+    return _choices((farm.name for farm in farms), current)
+
+
 def _choices(values, current: str) -> list[app_commands.Choice[str]]:
     current = current.casefold()
     matches = [

@@ -85,6 +85,7 @@ class RoyalSteward(commands.Bot):
         await self.load_extension("cogs.registration_cog")
         await self.load_extension("cogs.permissions_cog")
         await self.load_extension("cogs.tracks_cog")
+        await self.load_extension("cogs.farm_track_cog")
 
         synced = await self.tree.sync(guild=GUILD)
         log.info(f"Logged in as {self.user}")
