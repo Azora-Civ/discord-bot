@@ -17,6 +17,12 @@ def farm_embed(farm: Farm) -> discord.Embed:
     if last_farmed_by := farm.additional_data.get("last_farmed_by"):
         lines.append(f"🧑‍🌾 **Last farmed by:** {last_farmed_by}")
 
+    if requirements := farm.additional_data.get("requirements"):
+        lines.extend(["", f"**Requirements:** {requirements}"])
+
+    if info := farm.additional_data.get("info"):
+        lines.extend(["", f"**Info:** {info}"])
+
     lines.extend(
         [
             "",
@@ -49,7 +55,7 @@ async def panel_embed(bot) -> discord.Embed:
         embed.description = "No farms configured."
         return embed
 
-    farms = sorted(farms, key=lambda farm: farm.name, reverse=True)
+    farms = sorted(farms, key=lambda farm: farm.name)
 
     lines = [_panel_line(farm) for farm in farms]
     embed.description = "\n".join(lines)

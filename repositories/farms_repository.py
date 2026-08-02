@@ -46,7 +46,8 @@ class FarmsRepository:
                     name = excluded.name,
                     posxyz = excluded.posxyz,
                     regrow_time = excluded.regrow_time,
-                    farm_time = excluded.farm_time
+                    farm_time = excluded.farm_time,
+                    additional_data = excluded.additional_data
                 RETURNING id
                 """,
                 (

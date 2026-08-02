@@ -47,6 +47,8 @@ class FarmTrackCog(commands.Cog):
         posxyz="Farm position, for example: 123 64 -456.",
         regrow_time="Regrow interval, for example: 12h 35m, 90m, or 30m 2h.",
         farm_time="Expected farming duration, for example: 30m.",
+        requirements="Optional farming requirements.",
+        info="Optional farm info.",
     )
     @app_commands.autocomplete(name=farm_autocomplete)
     async def set(
@@ -56,6 +58,8 @@ class FarmTrackCog(commands.Cog):
         posxyz: str | None = None,
         regrow_time: str | None = None,
         farm_time: str | None = None,
+        requirements: str | None = None,
+        info: str | None = None,
     ) -> None:
         async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
@@ -64,7 +68,7 @@ class FarmTrackCog(commands.Cog):
             await self._require_farmers_mod(interaction)
 
             farm_name = _clean_name(name)
-            if posxyz is None and regrow_time is None and farm_time is None:
+            if all(value is None for value in (posxyz, regrow_time, farm_time, requirements, info)):
                 deleted = await self.bot.db.farms.delete_by_name(farm_name)
                 if not deleted:
                     raise NotFoundException(f"Couldn't find farm: {farm_name}.")
@@ -79,6 +83,10 @@ class FarmTrackCog(commands.Cog):
                     "New farms require posxyz, regrow_time, and farm_time. Existing farms can be updated partially."
                 )
 
+            additional_data = dict(existing_farm.additional_data) if existing_farm is not None else {}
+            _set_optional_text(additional_data, "requirements", requirements)
+            _set_optional_text(additional_data, "info", info)
+
             farm = Farm(
                 name=farm_name,
                 posxyz=posxyz.strip() if posxyz is not None else existing_farm.posxyz,
@@ -86,7 +94,7 @@ class FarmTrackCog(commands.Cog):
                 farm_time=_parse_interval(farm_time) if farm_time is not None else existing_farm.farm_time,
                 started_time=existing_farm.started_time if existing_farm is not None else None,
                 finished_time=existing_farm.finished_time if existing_farm is not None else None,
-                additional_data=existing_farm.additional_data if existing_farm is not None else {},
+                additional_data=additional_data,
             )
 
             if not farm.posxyz:
@@ -234,6 +242,17 @@ def _clean_name(name: str) -> str:
     if not cleaned:
         raise BadRequestException("Farm name cannot be empty.")
     return cleaned
+
+
+def _set_optional_text(data: dict[str, object], key: str, value: str | None) -> None:
+    if value is None:
+        return
+
+    cleaned = value.strip()
+    if cleaned:
+        data[key] = cleaned
+    else:
+        data.pop(key, None)
 
 
 def _farm_event_from_message(content: str) -> tuple[str, str, str | None] | None:
