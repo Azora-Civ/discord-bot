@@ -1,8 +1,11 @@
+import re
 import time
 
 import discord
 
 from models.farm import Farm, FarmState
+
+FARM_LAYER_REGEX = re.compile(r"^(?P<base>.+?)\s+L(?P<layer>\d+)$", re.IGNORECASE)
 
 
 def farm_embed(farm: Farm) -> discord.Embed:
@@ -57,7 +60,7 @@ async def panel_embed(bot) -> discord.Embed:
 
     farms = sorted(farms, key=lambda farm: farm.name)
 
-    lines = [_panel_line(farm) for farm in farms]
+    lines = _panel_lines(farms)
     embed.description = "\n".join(lines)
     embed.set_footer(
         text=f"{len(farms)} farm(s) tracked"
@@ -68,9 +71,9 @@ def _format_state(state, ready_at) -> str | None:
     if state == FarmState.UNKNOWN:
         return "❓ Unknown"
     elif state == FarmState.GROWING:
-        return f"⌛ Growing (ready {_format_timestamp(ready_at)})"
+        return f"⌛ {_format_timestamp(ready_at)}"
     elif state == FarmState.BEING_FARMED:
-        return f"⚒️ Being Farmed (ready {_format_timestamp(ready_at)})"
+        return "⚒️ In Use"
     if state == FarmState.FULLY_GROWN:
         return "✅ Ready"
 
@@ -79,6 +82,92 @@ def _format_state(state, ready_at) -> str | None:
 def _panel_line(farm: Farm) -> str:
     state, ready_at = _farm_state(farm)
     return f"**{farm.name}:** {_format_state(state, ready_at)}"
+
+
+def _panel_lines(farms: list[Farm]) -> list[str]:
+    farm_groups: dict[str, list[tuple[int, Farm]]] = {}
+    unlayered_farms: list[Farm] = []
+
+    for farm in farms:
+        base_name, layer = _farm_layer(farm.name)
+        if layer is None:
+            farm_groups.setdefault(base_name, []).append((1, farm))
+        else:
+            farm_groups.setdefault(base_name, []).append((layer, farm))
+
+    for farm in farms:
+        base_name, layer = _farm_layer(farm.name)
+        if layer is None and len(farm_groups[base_name]) == 1:
+            unlayered_farms.append(farm)
+
+    lines: list[str] = []
+    emitted_groups: set[str] = set()
+    unlayered_names = {farm.name for farm in unlayered_farms}
+    for farm in farms:
+        if farm.name in unlayered_names:
+            lines.append(_panel_line(farm))
+            continue
+
+        base_name, _ = _farm_layer(farm.name)
+        if base_name in emitted_groups:
+            continue
+
+        emitted_groups.add(base_name)
+        lines.append(_layered_panel_line(base_name, farm_groups[base_name]))
+
+    return lines
+
+
+def _farm_layer(name: str) -> tuple[str, int | None]:
+    if match := FARM_LAYER_REGEX.match(name.strip()):
+        return match.group("base").strip(), int(match.group("layer"))
+
+    return name, None
+
+
+def _layered_panel_line(base_name: str, farms: list[tuple[int, Farm]]) -> str:
+    ordered_farms = sorted(farms, key=lambda item: item[0])
+    layer_states = [(layer, *_farm_state(farm)) for layer, farm in ordered_farms]
+
+    if all(state == FarmState.FULLY_GROWN for _, state, _ in layer_states):
+        return f"**{base_name}:** {_format_state(FarmState.FULLY_GROWN, None)}"
+
+    layer_display_states = [
+        (layer, _format_state(state, ready_at))
+        for layer, state, ready_at in layer_states
+    ]
+    parts = [
+        f"{_format_layer_range(start, end)}: {display_state}"
+        for start, end, display_state in _combine_layer_states(layer_display_states)
+    ]
+    return f"**{base_name}:** {', '.join(parts)}"
+
+
+def _combine_layer_states(
+    layer_states: list[tuple[int, str | None]],
+) -> list[tuple[int, int, str | None]]:
+    combined: list[tuple[int, int, str | None]] = []
+
+    for layer, display_state in layer_states:
+        if not combined:
+            combined.append((layer, layer, display_state))
+            continue
+
+        start, end, previous_display_state = combined[-1]
+        if layer == end + 1 and display_state == previous_display_state:
+            combined[-1] = (start, layer, display_state)
+            continue
+
+        combined.append((layer, layer, display_state))
+
+    return combined
+
+
+def _format_layer_range(start: int, end: int) -> str:
+    if start == end:
+        return f"L{start}"
+
+    return f"L{start}-L{end}"
 
 def _farm_state(farm: Farm) -> tuple[FarmState, int | None]:
     now = int(time.time())

@@ -20,6 +20,10 @@ FARM_EVENT_REGEX = re.compile(
     r"\*\*\[([^\]]+)\]\*\*.*?\b(started|finished)\s+farming:\s*(.+)",
     re.IGNORECASE,
 )
+KIRA_PLAYER_REGEX = re.compile(r"\*\*\[([^\]]+)\]\*\*")
+KIRA_PUBLIC_PING_PLACEHOLDER = "<@!>"
+KIRA_PRIVATE_PING_PLACEHOLDER = "<@!p>"
+FARM_LAYER_REGEX = re.compile(r"^(?P<base>.+?)\s+L(?P<layer>\d+)$", re.IGNORECASE)
 PANEL_REFRESH_SECONDS = 60
 
 
@@ -49,6 +53,7 @@ class FarmTrackCog(commands.Cog):
         farm_time="Expected farming duration, for example: 30m.",
         requirements="Optional farming requirements.",
         info="Optional farm info.",
+        layers="Optional number of farm layers to create or keep.",
     )
     @app_commands.autocomplete(name=farm_autocomplete)
     async def set(
@@ -60,6 +65,7 @@ class FarmTrackCog(commands.Cog):
         farm_time: str | None = None,
         requirements: str | None = None,
         info: str | None = None,
+        layers: int | None = None,
     ) -> None:
         async with respond(interaction, ephemeral=False) as should_process:
             if not should_process:
@@ -68,6 +74,31 @@ class FarmTrackCog(commands.Cog):
             await self._require_farmers_mod(interaction)
 
             farm_name = _clean_name(name)
+            if layers is not None:
+                if layers < 0:
+                    raise BadRequestException("Layer count cannot be negative.")
+
+                base_name, changed_count, deleted_count = await self._set_layered_farms(
+                    farm_name,
+                    layers,
+                    posxyz=posxyz,
+                    regrow_time=regrow_time,
+                    farm_time=farm_time,
+                    requirements=requirements,
+                    info=info,
+                )
+                await self._refresh_panel_after_change()
+                if layers == 0:
+                    await interaction.edit_original_response(
+                        content=f"Deleted all `{base_name}` layers ({deleted_count} deleted).",
+                    )
+                    return
+
+                await interaction.edit_original_response(
+                    content=f"Set `{base_name}` layers L1-L{layers} ({changed_count} saved, {deleted_count} deleted).",
+                )
+                return
+
             if all(value is None for value in (posxyz, regrow_time, farm_time, requirements, info)):
                 deleted = await self.bot.db.farms.delete_by_name(farm_name)
                 if not deleted:
@@ -108,6 +139,88 @@ class FarmTrackCog(commands.Cog):
                 content=None,
                 embed=farm_embed(saved or farm),
             )
+
+    async def _set_layered_farms(
+        self,
+        farm_name: str,
+        layers: int,
+        *,
+        posxyz: str | None,
+        regrow_time: str | None,
+        farm_time: str | None,
+        requirements: str | None,
+        info: str | None,
+    ) -> tuple[str, int, int]:
+        base_name, _ = _farm_layer(farm_name)
+        existing_farms = await self.bot.db.farms.fetch_all()
+        existing_by_name = {farm.name.casefold(): farm for farm in existing_farms}
+        existing_layers = [
+            (layer, farm)
+            for farm in existing_farms
+            for parsed_base, layer in [_farm_layer(farm.name)]
+            if layer is not None and parsed_base.casefold() == base_name.casefold()
+        ]
+
+        if layers == 0:
+            deleted_count = 0
+            for _, farm in existing_layers:
+                if await self.bot.db.farms.delete_by_name(farm.name):
+                    deleted_count += 1
+
+            if await self.bot.db.farms.delete_by_name(base_name):
+                deleted_count += 1
+
+            return base_name, 0, deleted_count
+
+        template = (
+            existing_by_name.get(farm_name.casefold())
+            or existing_by_name.get(base_name.casefold())
+            or existing_by_name.get(_layer_name(base_name, 1).casefold())
+            or next((farm for _, farm in sorted(existing_layers, key=lambda item: item[0])), None)
+        )
+
+        if template is None and (posxyz is None or regrow_time is None or farm_time is None):
+            raise BadRequestException(
+                "New layered farms require posxyz, regrow_time, and farm_time. "
+                "Existing layered farms can be updated partially."
+            )
+
+        layer_posxyz = posxyz.strip() if posxyz is not None else template.posxyz
+        if not layer_posxyz:
+            raise BadRequestException("Farm position cannot be empty.")
+
+        layer_regrow_time = _parse_interval(regrow_time) if regrow_time is not None else template.regrow_time
+        layer_farm_time = _parse_interval(farm_time) if farm_time is not None else template.farm_time
+        additional_data = dict(template.additional_data) if template is not None else {}
+        _set_optional_text(additional_data, "requirements", requirements)
+        _set_optional_text(additional_data, "info", info)
+
+        changed_count = 0
+        for layer in range(1, layers + 1):
+            layer_name = _layer_name(base_name, layer)
+            existing_layer = existing_by_name.get(layer_name.casefold())
+            state_source = existing_layer or template
+            farm = Farm(
+                name=layer_name,
+                posxyz=layer_posxyz,
+                regrow_time=layer_regrow_time,
+                farm_time=layer_farm_time,
+                started_time=state_source.started_time if state_source is not None else None,
+                finished_time=state_source.finished_time if state_source is not None else None,
+                additional_data=additional_data,
+            )
+            await self.bot.db.farms.set(farm)
+            changed_count += 1
+
+        deleted_count = 0
+        for layer, farm in existing_layers:
+            if layer > layers and await self.bot.db.farms.delete_by_name(farm.name):
+                deleted_count += 1
+
+        if await self.bot.db.farms.delete_by_name(base_name):
+            deleted_count += 1
+
+        return base_name, changed_count, deleted_count
 
     @root_group.command(
         name="set_farmers_mod",
@@ -175,6 +288,8 @@ class FarmTrackCog(commands.Cog):
         if message.author.id != cfg.KIRA_USER_ID:
             return
 
+        await self._relay_kira_ping(message)
+
         event = _farm_event_from_message(message.content)
         if event is None:
             return
@@ -192,6 +307,32 @@ class FarmTrackCog(commands.Cog):
             return
 
         await self._refresh_panel_after_change()
+
+    async def _relay_kira_ping(self, message: discord.Message) -> None:
+        if not _has_kira_ping_placeholder(message.content):
+            return
+
+        player_name = _player_name_from_message(message.content)
+        citizen = await self.bot.db.citizens.fetch_by_ign(player_name) if player_name is not None else None
+        if not await _delete_kira_ping_message(message):
+            return
+
+        if citizen is None or citizen.user_id is None:
+            log.info("Deleted Kira ping for unknown or unlinked citizen: %s", player_name or "unknown")
+            return
+
+        relay_content = _replace_kira_ping_placeholder(message.content, citizen.user_id)
+        allowed_mentions = discord.AllowedMentions(everyone=False, roles=False, users=True)
+
+        try:
+            if KIRA_PRIVATE_PING_PLACEHOLDER in message.content:
+                user = self.bot.get_user(citizen.user_id) or await self.bot.fetch_user(citizen.user_id)
+                await user.send(relay_content, allowed_mentions=allowed_mentions)
+                return
+
+            await message.channel.send(relay_content, allowed_mentions=allowed_mentions)
+        except discord.HTTPException:
+            log.exception("Failed to relay Kira ping for citizen: %s", player_name)
 
     @tasks.loop(seconds=PANEL_REFRESH_SECONDS)
     async def update_panel(self) -> None:
@@ -244,6 +385,17 @@ def _clean_name(name: str) -> str:
     return cleaned
 
 
+def _farm_layer(name: str) -> tuple[str, int | None]:
+    if match := FARM_LAYER_REGEX.match(name.strip()):
+        return match.group("base").strip(), int(match.group("layer"))
+
+    return name, None
+
+
+def _layer_name(base_name: str, layer: int) -> str:
+    return f"{base_name} L{layer}"
+
+
 def _set_optional_text(data: dict[str, object], key: str, value: str | None) -> None:
     if value is None:
         return
@@ -260,6 +412,37 @@ def _farm_event_from_message(content: str) -> tuple[str, str, str | None] | None
         return match.group(2).lower(), _clean_name(match.group(3)), match.group(1).strip()
 
     return None
+
+
+def _has_kira_ping_placeholder(content: str) -> bool:
+    return KIRA_PUBLIC_PING_PLACEHOLDER in content or KIRA_PRIVATE_PING_PLACEHOLDER in content
+
+
+def _player_name_from_message(content: str) -> str | None:
+    if match := KIRA_PLAYER_REGEX.search(content):
+        return match.group(1).strip()
+
+    return None
+
+
+def _replace_kira_ping_placeholder(content: str, user_id: int) -> str:
+    mention = f"<@{user_id}>"
+    return content.replace(KIRA_PRIVATE_PING_PLACEHOLDER, mention).replace(KIRA_PUBLIC_PING_PLACEHOLDER, mention)
+
+
+async def _delete_kira_ping_message(message: discord.Message) -> bool:
+    try:
+        await message.delete()
+    except discord.NotFound:
+        return True
+    except discord.Forbidden:
+        log.exception("Missing permissions to delete Kira ping message: %s", message.id)
+        return False
+    except discord.HTTPException:
+        log.exception("Failed to delete Kira ping message: %s", message.id)
+        return False
+
+    return True
 
 
 def _parse_interval(value: str) -> int:
