@@ -12,7 +12,7 @@ from helpers.discord import get_message
 from helpers.general import respond
 from models.farm import Farm
 from models.ShownException import BadRequestException, NotFoundException, UnauthorizedException
-from ui.panels.farms_panel import farm_embed, panel_embed
+from ui.panels.farms_panel import farm_embed, layered_farm_embed, panel_embed
 
 log = logging.getLogger(__name__)
 
@@ -260,8 +260,13 @@ class FarmTrackCog(commands.Cog):
             if not should_process:
                 return
 
-            farm = await self._farm(name)
-            await interaction.edit_original_response(content=None, embed=farm_embed(farm))
+            base_name, layered_farms = await self._farms_for_view(name)
+            embed = (
+                layered_farm_embed(base_name, layered_farms)
+                if len(layered_farms) > 1
+                else farm_embed(layered_farms[0][1])
+            )
+            await interaction.edit_original_response(content=None, embed=embed)
 
     @root_group.command(
         name="panel",
@@ -348,6 +353,25 @@ class FarmTrackCog(commands.Cog):
         if farm is None:
             raise NotFoundException(f"Couldn't find farm: {farm_name}.")
         return farm
+
+    async def _farms_for_view(self, name: str) -> tuple[str, list[tuple[int, Farm]]]:
+        farm_name = _clean_name(name)
+        base_name, parsed_layer = _farm_layer(farm_name)
+        farms = await self.bot.db.farms.fetch_all()
+        layers = [
+            (layer, farm)
+            for farm in farms
+            for parsed_base, layer in [_farm_layer(farm.name)]
+            if layer is not None and parsed_base.casefold() == base_name.casefold()
+        ]
+        if layers:
+            return base_name, sorted(layers, key=lambda item: item[0])
+
+        farm = await self.bot.db.farms.find_by_name(farm_name)
+        if farm is None:
+            raise NotFoundException(f"Couldn't find farm: {farm_name}.")
+
+        return base_name, [(parsed_layer or 1, farm)]
 
     async def _require_farmers_mod(self, interaction: discord.Interaction) -> None:
         user = interaction.user

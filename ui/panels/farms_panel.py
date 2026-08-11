@@ -46,6 +46,52 @@ def farm_embed(farm: Farm) -> discord.Embed:
         timestamp=discord.utils.utcnow(),
     )
 
+
+def layered_farm_embed(base_name: str, farms: list[tuple[int, Farm]]) -> discord.Embed:
+    ordered_farms = sorted(farms, key=lambda item: item[0])
+    states = [_farm_state(farm)[0] for _, farm in ordered_farms]
+    template = ordered_farms[0][1]
+
+    lines = [
+        f"📍 **Location:** `{template.posxyz}`",
+        "",
+        "🌱 **Layers**",
+    ]
+
+    for layer, farm in ordered_farms:
+        state, ready_at = _farm_state(farm)
+        parts = [
+            f"L{layer}: {_format_state(state, ready_at) or 'Unknown'}",
+            f"Started: {_format_timestamp(farm.started_time)}",
+            f"Finished: {_format_timestamp(farm.finished_time)}",
+        ]
+        if last_farmed_by := farm.additional_data.get("last_farmed_by"):
+            parts.append(f"Last: {last_farmed_by}")
+        lines.append(" | ".join(parts))
+
+    if requirements := template.additional_data.get("requirements"):
+        lines.extend(["", f"**Requirements:** {requirements}"])
+
+    if info := template.additional_data.get("info"):
+        lines.extend(["", f"**Info:** {info}"])
+
+    lines.extend(
+        [
+            "",
+            "⏱️ **Farm Details**",
+            f"**Regrow time:** {_format_interval(template.regrow_time)}",
+            f"**Time to farm:** {_format_interval(template.farm_time)}",
+        ]
+    )
+
+    return discord.Embed(
+        title=f"🌾 {base_name}",
+        description="\n".join(lines),
+        color=_layered_state_color(states),
+        timestamp=discord.utils.utcnow(),
+    )
+
+
 async def panel_embed(bot) -> discord.Embed:
     farms = await bot.db.farms.fetch_all()
     embed = discord.Embed(
@@ -130,9 +176,6 @@ def _layered_panel_field_value(farms: list[tuple[int, Farm]]) -> str:
     ordered_farms = sorted(farms, key=lambda item: item[0])
     layer_states = [(layer, *_farm_state(farm)) for layer, farm in ordered_farms]
 
-    if all(state == FarmState.FULLY_GROWN for _, state, _ in layer_states):
-        return _format_state(FarmState.FULLY_GROWN, None) or "Ready"
-
     layer_display_states = [
         (layer, _format_state(state, ready_at))
         for layer, state, ready_at in layer_states
@@ -203,6 +246,14 @@ def _state_color(state: FarmState) -> discord.Color:
     if state == FarmState.FULLY_GROWN:
         return discord.Color.green()
     if state == FarmState.GROWING:
+        return discord.Color.gold()
+    return discord.Color.light_grey()
+
+
+def _layered_state_color(states: list[FarmState]) -> discord.Color:
+    if all(state == FarmState.FULLY_GROWN for state in states):
+        return discord.Color.green()
+    if any(state == FarmState.GROWING for state in states):
         return discord.Color.gold()
     return discord.Color.light_grey()
 

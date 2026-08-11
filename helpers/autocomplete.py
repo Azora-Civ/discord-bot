@@ -1,7 +1,10 @@
+import re
+
 import discord
 from discord import app_commands
 
 MAX_CHOICES = 25
+FARM_LAYER_REGEX = re.compile(r"^(?P<base>.+?)\s+L\d+$", re.IGNORECASE)
 
 
 async def ign_autocomplete(
@@ -55,19 +58,23 @@ async def farm_autocomplete(
     current: str,
 ) -> list[app_commands.Choice[str]]:
     farms = await interaction.client.db.farms.fetch_all()
-    return _choices((farm.name for farm in farms), current)
+    return _choices((_farm_suggestion_name(farm.name) for farm in farms), current)
 
 
 def _choices(values, current: str) -> list[app_commands.Choice[str]]:
     current = current.casefold()
-    matches = [
-        value
-        for value in values
-        if not current or current in value.casefold()
-    ]
+    unique_values = sorted(set(values), key=lambda value: value.casefold())
+    matches = [value for value in unique_values if not current or current in value.casefold()]
     matches.sort(key=lambda value: (not value.casefold().startswith(current), value.casefold()))
 
     return [
         app_commands.Choice(name=value[:100], value=value[:100])
         for value in matches[:MAX_CHOICES]
     ]
+
+
+def _farm_suggestion_name(name: str) -> str:
+    if match := FARM_LAYER_REGEX.match(name.strip()):
+        return match.group("base").strip()
+
+    return name
