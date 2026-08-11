@@ -60,8 +60,9 @@ async def panel_embed(bot) -> discord.Embed:
 
     farms = sorted(farms, key=lambda farm: farm.name)
 
-    lines = _panel_lines(farms)
-    embed.description = "\n".join(lines)
+    for name, value in _panel_fields(farms):
+        embed.add_field(name=name, value=value, inline=True)
+
     embed.set_footer(
         text=f"{len(farms)} farm(s) tracked"
     )
@@ -79,12 +80,7 @@ def _format_state(state, ready_at) -> str | None:
 
     return None
 
-def _panel_line(farm: Farm) -> str:
-    state, ready_at = _farm_state(farm)
-    return f"**{farm.name}:** {_format_state(state, ready_at)}"
-
-
-def _panel_lines(farms: list[Farm]) -> list[str]:
+def _panel_fields(farms: list[Farm]) -> list[tuple[str, str]]:
     farm_groups: dict[str, list[tuple[int, Farm]]] = {}
     unlayered_farms: list[Farm] = []
 
@@ -100,12 +96,12 @@ def _panel_lines(farms: list[Farm]) -> list[str]:
         if layer is None and len(farm_groups[base_name]) == 1:
             unlayered_farms.append(farm)
 
-    lines: list[str] = []
+    fields: list[tuple[str, str]] = []
     emitted_groups: set[str] = set()
     unlayered_names = {farm.name for farm in unlayered_farms}
     for farm in farms:
         if farm.name in unlayered_names:
-            lines.append(_panel_line(farm))
+            fields.append((farm.name, _panel_field_value(farm)))
             continue
 
         base_name, _ = _farm_layer(farm.name)
@@ -113,9 +109,9 @@ def _panel_lines(farms: list[Farm]) -> list[str]:
             continue
 
         emitted_groups.add(base_name)
-        lines.append(_layered_panel_line(base_name, farm_groups[base_name]))
+        fields.append((base_name, _layered_panel_field_value(farm_groups[base_name])))
 
-    return lines
+    return fields
 
 
 def _farm_layer(name: str) -> tuple[str, int | None]:
@@ -125,12 +121,17 @@ def _farm_layer(name: str) -> tuple[str, int | None]:
     return name, None
 
 
-def _layered_panel_line(base_name: str, farms: list[tuple[int, Farm]]) -> str:
+def _panel_field_value(farm: Farm) -> str:
+    state, ready_at = _farm_state(farm)
+    return _format_state(state, ready_at) or "Unknown"
+
+
+def _layered_panel_field_value(farms: list[tuple[int, Farm]]) -> str:
     ordered_farms = sorted(farms, key=lambda item: item[0])
     layer_states = [(layer, *_farm_state(farm)) for layer, farm in ordered_farms]
 
     if all(state == FarmState.FULLY_GROWN for _, state, _ in layer_states):
-        return f"**{base_name}:** {_format_state(FarmState.FULLY_GROWN, None)}"
+        return _format_state(FarmState.FULLY_GROWN, None) or "Ready"
 
     layer_display_states = [
         (layer, _format_state(state, ready_at))
@@ -140,7 +141,7 @@ def _layered_panel_line(base_name: str, farms: list[tuple[int, Farm]]) -> str:
         f"{_format_layer_range(start, end)}: {display_state}"
         for start, end, display_state in _combine_layer_states(layer_display_states)
     ]
-    return f"**{base_name}:** {', '.join(parts)}"
+    return "\n".join(parts)
 
 
 def _combine_layer_states(
