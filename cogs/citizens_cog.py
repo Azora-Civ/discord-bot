@@ -79,8 +79,8 @@ class CitizensCog(commands.Cog):
             msg = citizen_list_panel(
                 citizens,
                 ign_filter=ign,
-                last_online_since=last_online_since,
-                last_online_until=last_online_until,
+                last_online_since=last_online_since if last_online_since != 3650 else None,
+                last_online_until=last_online_until if last_online_until != -1 else None,
                 has_discord=has_discord,
                 author_id=interaction.user.id,
             )
