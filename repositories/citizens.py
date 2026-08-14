@@ -1,7 +1,9 @@
+import json
+from dataclasses import asdict, fields
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from models.citizen import Citizen, Citizenship
+from models.citizen import Citizen, CitizenData, Citizenship
 
 if TYPE_CHECKING:
     from database import Database
@@ -20,11 +22,19 @@ class CitizenRepository:
                     in_game_name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                     user_id INTEGER UNIQUE,
                     citizenship TEXT NOT NULL,
+                    data TEXT NOT NULL DEFAULT '{}',
                     joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     last_online TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            await self._ensure_data_column(conn)
+
+    async def _ensure_data_column(self, conn) -> None:
+        cursor = await conn.execute("PRAGMA table_info(citizens)")
+        columns = {row["name"] for row in await cursor.fetchall()}
+        if "data" not in columns:
+            await conn.execute("ALTER TABLE citizens ADD COLUMN data TEXT NOT NULL DEFAULT '{}'")
 
     async def create(self, citizen: Citizen) -> int:
         async with self.db.transaction() as conn:
@@ -34,15 +44,17 @@ class CitizenRepository:
                     in_game_name,
                     user_id,
                     citizenship,
+                    data,
                     joined_at,
                     last_online
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     citizen.in_game_name,
                     citizen.user_id,
                     citizen.citizenship.name,
+                    self._data_to_json(citizen.data),
                     citizen.joined_at.isoformat(),
                     citizen.last_online.isoformat(),
                 ),
@@ -61,6 +73,7 @@ class CitizenRepository:
                     in_game_name = ?,
                     user_id = ?,
                     citizenship = ?,
+                    data = ?,
                     joined_at = ?,
                     last_online = ?
                 WHERE id = ?
@@ -69,6 +82,7 @@ class CitizenRepository:
                     citizen.in_game_name,
                     citizen.user_id,
                     citizen.citizenship.name,
+                    self._data_to_json(citizen.data),
                     citizen.joined_at.isoformat(),
                     citizen.last_online.isoformat(),
                     citizen.id,
@@ -139,9 +153,19 @@ class CitizenRepository:
             in_game_name=row["in_game_name"],
             user_id=row["user_id"],
             citizenship=self._citizenship_from_db(row["citizenship"]),
+            data=self._data_from_json(row["data"]),
             joined_at=datetime.fromisoformat(row["joined_at"]),
             last_online=datetime.fromisoformat(row["last_online"]),
         )
+
+    def _data_to_json(self, data: CitizenData) -> str:
+        return json.dumps(asdict(data))
+
+    def _data_from_json(self, value: str) -> CitizenData:
+        raw_data = json.loads(value) if value else {}
+        field_names = {field.name for field in fields(CitizenData)}
+        data = {key: raw_data[key] for key in field_names if key in raw_data}
+        return CitizenData(**data)
 
     def _citizenship_from_db(self, value: str) -> Citizenship:
         if value in {"CITIZEN", "Citizen"}:

@@ -12,7 +12,8 @@ def citizen_list_panel(
     citizens: list[Citizen],
     *,
     ign_filter: str | None = None,
-    last_online_days: int | None = None,
+    last_online_since: int | None = None,
+    last_online_until: int | None = None,
     has_discord: bool | None = None,
     author_id: int | None = None,
 ) -> dict[str, object]:
@@ -24,7 +25,8 @@ def citizen_list_panel(
         )
         footer = _filter_footer(
             ign_filter=ign_filter,
-            last_online_days=last_online_days,
+            last_online_since=last_online_since,
+            last_online_until=last_online_until,
             has_discord=has_discord,
         )
         if footer:
@@ -46,7 +48,8 @@ def citizen_list_panel(
                 page=(index // PAGE_SIZE) + 1,
                 pages=((len(citizens) - 1) // PAGE_SIZE) + 1,
                 ign_filter=ign_filter,
-                last_online_days=last_online_days,
+                last_online_since=last_online_since,
+                last_online_until=last_online_until,
                 has_discord=has_discord,
             )
         )
@@ -68,6 +71,7 @@ def citizen_panel(citizen: Citizen, *, color: discord.Color | None = None) -> di
     embed.add_field(name="Discord", value=_discord_value(citizen), inline=True)
     embed.add_field(name="Joined", value=_time_value(citizen.joined_at), inline=True)
     embed.add_field(name="Last Online", value=_time_value(citizen.last_online), inline=True)
+    embed.add_field(name="Recruitments", value=str(citizen.data.recruitments), inline=True)
     if citizen.id is not None:
         embed.set_footer(text=f"Citizen ID: {citizen.id}")
     return embed
@@ -120,13 +124,15 @@ def _footer(
     page: int,
     pages: int,
     ign_filter: str | None,
-    last_online_days: int | None,
+    last_online_since: int | None,
+    last_online_until: int | None,
     has_discord: bool | None,
 ) -> str:
     text = f"{total} result(s) - Page {page}/{pages}"
     footer = _filter_footer(
         ign_filter=ign_filter,
-        last_online_days=last_online_days,
+        last_online_since=last_online_since,
+        last_online_until=last_online_until,
         has_discord=has_discord,
     )
     if footer:
@@ -137,14 +143,17 @@ def _footer(
 def _filter_footer(
     *,
     ign_filter: str | None,
-    last_online_days: int | None,
+    last_online_since: int | None,
+    last_online_until: int | None,
     has_discord: bool | None,
 ) -> str:
     filters = []
     if ign_filter:
         filters.append(f"IGN: {ign_filter}")
-    if last_online_days is not None:
-        filters.append(f"Last online: {last_online_days}d")
+    if last_online_since is not None or last_online_until is not None:
+        since = f"since {last_online_since} days ago" if last_online_since is not None else ""
+        until = f"until {last_online_until} days ago" if last_online_until is not None else ""
+        filters.append(f"Last online {' '.join(x for x in (since, until) if x != '')}")
     if has_discord is not None:
         filters.append(f"Discord: {'linked' if has_discord else 'unlinked'}")
     return " | ".join(filters)

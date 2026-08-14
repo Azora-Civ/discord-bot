@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config as cfg
+from helpers.autocomplete import ign_autocomplete
 from helpers.discord import get_message, is_mod
 from helpers.general import respond
 from models.citizen import Citizen, Citizenship
@@ -17,6 +18,7 @@ from ui.modals.registration_embed_modal import RegistrationEmbedModal
 from ui.panels.application_panel import registration_panel as application_panel
 from ui.panels.permission_commands_panel import permission_command_embeds
 from ui.panels.registration_panel import get_embed_config, registration_panel
+from ui.views.registration_recruiter_view import RegistrationRecruiterView, registration_recruiter_panel
 from ui.views.registration_response_view import RegistrationResponseView
 from ui.views.registration_view import RegistrationView
 
@@ -112,6 +114,12 @@ class RegistrationCog(commands.Cog):
         if not await is_mod(interaction):
             raise BadRequestException(f"You are not permitted to {action} the registration.")
 
+    async def _require_recruiter_permission(self, interaction: discord.Interaction, registration: Registration) -> None:
+        if registration.poster_id == interaction.user.id or await is_mod(interaction) or _is_admin(interaction.user):
+            return
+
+        raise BadRequestException("You are not permitted to set the recruiter.")
+
     async def _send_permission_commands(self, interaction: discord.Interaction, citizen: Citizen | None) -> None:
         if citizen is None:
             await interaction.edit_original_response(content="Registration was already accepted.")
@@ -146,6 +154,10 @@ class RegistrationCog(commands.Cog):
             thread_with_message = await channel.create_thread(**thread_msg)
             registration.data.thread_id = thread_with_message.thread.id
             registration.data.message_id = thread_with_message.message.id
+            recruiter_message = await thread_with_message.thread.send(
+                **await registration_recruiter_panel(self.bot.db, registration)
+            )
+            registration.data.recruiter_message_id = recruiter_message.id
 
             if registration.status == RegistrationStatus.PENDING:
                 await self.service.save_registration(registration, dispatch_events=False)
@@ -161,8 +173,35 @@ class RegistrationCog(commands.Cog):
             return
 
         await message.edit(**msg)
+        await self._update_recruiter_message(registration)
         if tags and isinstance(message.channel, discord.Thread):
             await message.channel.edit(applied_tags=tags)
+
+    async def _update_recruiter_message(self, registration: Registration) -> None:
+        if registration.data.thread_id is None:
+            return
+
+        message = None
+        if registration.data.recruiter_message_id is not None:
+            message = await get_message(
+                self.bot,
+                registration.data.thread_id,
+                registration.data.recruiter_message_id,
+            )
+
+        msg = await registration_recruiter_panel(self.bot.db, registration)
+        if message is not None:
+            await message.edit(**msg)
+            return
+
+        channel = self.bot.get_channel(registration.data.thread_id) or await self.bot.fetch_channel(
+            registration.data.thread_id
+        )
+        if isinstance(channel, discord.Thread):
+            recruiter_message = await channel.send(**msg)
+            registration.data.recruiter_message_id = recruiter_message.id
+            if registration.status == RegistrationStatus.PENDING:
+                await self.service.save_registration(registration, dispatch_events=False)
 
     async def _registration_tags(
         self,
@@ -232,6 +271,48 @@ class RegistrationCog(commands.Cog):
             registration = await self._registration_from_thread(interaction)
             await self.reject_registration(registration)
             await interaction.edit_original_response(content=f"Denied `{registration.in_game_name}`.")
+
+    @root_group.command(
+        name="set-recruiter",
+        description="Set the recruiter for the registration in this thread.",
+    )
+    @app_commands.describe(
+        user="Discord user for the recruiting citizen.",
+        ign="In-game name for the recruiting citizen.",
+    )
+    @app_commands.autocomplete(ign=ign_autocomplete)
+    async def set_recruiter(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member | None = None,
+        ign: str | None = None,
+    ):
+        async with respond(interaction) as should_process:
+            if not should_process:
+                return
+
+            if (user is None) == (ign is None):
+                raise BadRequestException("Pass exactly one recruiter: user or ign.")
+
+            registration = await self._registration_from_thread(interaction)
+            await self._require_recruiter_permission(interaction, registration)
+
+            if user is not None:
+                recruiter = await self.bot.db.citizens.fetch_by_user_id(user.id)
+            else:
+                recruiter = await self.bot.db.citizens.fetch_by_ign(ign)
+
+            if recruiter is None:
+                raise BadRequestException("Recruiter must be an existing citizen.")
+
+            recruiter = await self.service.select_recruiter(registration, recruiter)
+            await self._update_recruiter_message(registration)
+            await interaction.edit_original_response(
+                content=(
+                    f"Recruiter set to `{recruiter.in_game_name}`. "
+                    "It will be counted if this registration is accepted."
+                )
+            )
 
     @root_group.command(name="panel", description="[ADMIN] Setup the registration panel here.")
     @app_commands.default_permissions(administrator=True)
@@ -307,7 +388,12 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(RegistrationCog(bot), guild=cfg.GUILD)
     bot.add_view(RegistrationView())
     bot.add_view(RegistrationResponseView())
+    bot.add_view(RegistrationRecruiterView())
 
 
 def _forum_tag_by_id(channel: discord.ForumChannel, tag_id: int) -> discord.ForumTag | None:
     return next((tag for tag in channel.available_tags if tag.id == tag_id), None)
+
+
+def _is_admin(user) -> bool:
+    return isinstance(user, discord.Member) and user.guild_permissions.administrator

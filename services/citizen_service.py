@@ -48,11 +48,12 @@ class CitizenService:
     async def list_citizens(
         self,
         ign: str | None = None,
-        last_online_days: int | None = None,
+        last_online_since: int = 3650,
+        last_online_until: int = -1,
         has_discord: bool | None = None,
     ) -> list[Citizen]:
-        if last_online_days is not None and last_online_days < 1:
-            raise BadRequestException("Last online days must be at least 1.")
+        if last_online_since < last_online_until:
+            raise BadRequestException("Last online since must be greater than or equal to last online until.")
 
         citizens = await self.repo.fetch_all()
 
@@ -60,9 +61,14 @@ class CitizenService:
             needle = ign.strip().casefold()
             citizens = [citizen for citizen in citizens if needle in citizen.in_game_name.casefold()]
 
-        if last_online_days is not None:
-            cutoff = datetime.now(UTC) - timedelta(days=last_online_days)
-            citizens = [citizen for citizen in citizens if _aware(citizen.last_online) >= cutoff]
+        now = datetime.now(UTC)
+        lower_bound = now - timedelta(days=last_online_since)
+        upper_bound = now - timedelta(days=last_online_until)
+        citizens = [
+            citizen
+            for citizen in citizens
+            if lower_bound <= _aware(citizen.last_online) <= upper_bound
+        ]
 
         if has_discord is not None:
             citizens = [citizen for citizen in citizens if (citizen.user_id is not None) == has_discord]
@@ -155,6 +161,23 @@ class CitizenService:
                 kind=CitizenChangeKind.ACTIVITY,
                 citizen=citizen,
                 source="snitch_hit",
+            )
+        )
+        return citizen
+
+    async def add_recruitment(self, citizen: Citizen, *, source: str | None = None) -> Citizen:
+        if citizen.id is None:
+            raise BadRequestException("Cannot update a citizen without an id.")
+
+        previous = replace(citizen, data=replace(citizen.data))
+        citizen.data.recruitments += 1
+        await self.repo.update(citizen)
+        await self.on_citizen_changed.emit(
+            CitizenChangedEvent(
+                kind=CitizenChangeKind.UPDATED,
+                citizen=citizen,
+                previous=previous,
+                source=source,
             )
         )
         return citizen

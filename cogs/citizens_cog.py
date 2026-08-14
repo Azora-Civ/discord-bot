@@ -53,7 +53,8 @@ class CitizensCog(commands.Cog):
     )
     @app_commands.describe(
         ign="Only show citizens whose in-game name contains this text.",
-        last_online_days="Only show citizens seen online within this many days.",
+        last_online_since="Oldest last-online age in days to include. Defaults to 10 years.",
+        last_online_until="Newest last-online age in days to include. Use 30 to find citizens offline 30+ days.",
         has_discord="Only show citizens with or without a linked Discord user.",
     )
     @app_commands.autocomplete(ign=ign_autocomplete)
@@ -61,7 +62,8 @@ class CitizensCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         ign: str | None = None,
-        last_online_days: app_commands.Range[int, 1, 3650] | None = None,
+        last_online_since: app_commands.Range[int, 0, 3650] = 3650,
+        last_online_until: app_commands.Range[int, 0, 3650] = -1,
         has_discord: bool | None = None,
     ):
         async with respond(interaction) as should_process:
@@ -70,13 +72,15 @@ class CitizensCog(commands.Cog):
 
             citizens = await self.service.list_citizens(
                 ign,
-                last_online_days=last_online_days,
+                last_online_since=last_online_since,
+                last_online_until=last_online_until,
                 has_discord=has_discord,
             )
             msg = citizen_list_panel(
                 citizens,
                 ign_filter=ign,
-                last_online_days=last_online_days,
+                last_online_since=last_online_since,
+                last_online_until=last_online_until,
                 has_discord=has_discord,
                 author_id=interaction.user.id,
             )

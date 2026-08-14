@@ -129,10 +129,26 @@ class RegistrationService:
             source="registration_accepted",
         )
 
+        if registration.data.recruiter_citizen_id is not None:
+            recruiter = await self.db.citizens.fetch_by_id(registration.data.recruiter_citizen_id)
+            if recruiter is not None:
+                await self.citizen_service.add_recruitment(recruiter, source="registration_accepted")
+
         registration.status = RegistrationStatus.ACCEPTED
         await self.save_registration(registration, source="registration_accepted")
 
         return citizen
+
+    async def select_recruiter(self, registration: Registration, recruiter: Citizen) -> Citizen:
+        if registration.status != RegistrationStatus.PENDING:
+            raise BadStateException("Recruiter can only be selected for a pending registration.")
+
+        if recruiter.id is None:
+            raise BadRequestException("Recruiter must be an existing citizen.")
+
+        registration.data.recruiter_citizen_id = recruiter.id
+        await self.save_registration(registration, source="recruiter_selected")
+        return recruiter
 
     async def hit_registration_snitch(self, ign: str) -> Registration | None:
         registration = await self.db.registrations.fetch_by_ign(ign)

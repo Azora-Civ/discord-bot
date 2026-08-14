@@ -18,10 +18,13 @@ class RegistrationData:
 
     thread_id: int | None = None
     message_id: int | None = None
+    recruiter_message_id: int | None = None
 
     duchy_name: str = ""
     duchy_mention: str = ""
     duchy_emoji: str = ""
+
+    recruiter_citizen_id: int | None = None
 
 
 @dataclass

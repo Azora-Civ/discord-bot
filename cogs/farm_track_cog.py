@@ -17,7 +17,7 @@ from ui.panels.farms_panel import farm_embed, layered_farm_embed, panel_embed
 log = logging.getLogger(__name__)
 
 FARM_EVENT_REGEX = re.compile(
-    r"\*\*\[([^\]]+)\]\*\*.*?\b(started|finished)\s+farming:\s*(.+)",
+    r"\*\*\[([^\]]+)\]\*\*.*?\b(started|finished):\s*(.+)",
     re.IGNORECASE,
 )
 KIRA_PLAYER_REGEX = re.compile(r"\*\*\[([^\]]+)\]\*\*")
